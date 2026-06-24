@@ -20,7 +20,8 @@ const COLUMN_CONFIG = [
   { header: "PR", note: "Projected Revenue: Last 4 quarter revenue * (1 + Avg QtQ growth)", format: "large_currency", getValue: d => d.pr.v, getNote: d => d.pr.n },
   { header: "WPR", note: "Weighted Projected Revenue: Last 4 quarter revenue * (1 + Weighted Avg QtQ growth)", format: "large_currency", getValue: d => d.wpr.v, getNote: d => d.wpr.n },
   { header: "Price", note: "Current Stock Price", format: "currency", getValue: d => d.price.v, getNote: d => d.price.n },
-  { header: "Wk %", note: "Week % Change", format: "percent", getValue: d => d.weekChange.v, getNote: d => d.weekChange.n }
+  { header: "Wk %", note: "Week % Change", format: "percent", getValue: d => d.weekChange.v, getNote: d => d.weekChange.n },
+  { header: "Name", note: "Company Name", format: "string", getValue: d => d.name.v, getNote: d => d.name.n }
 ];
 
 /**
@@ -195,7 +196,8 @@ class MetricsCalculator {
       wpr: this.createField("NEG"),
       svr: this.createField("NEG"),
       gvr: this.createField("NEG"),
-      wgvr: this.createField("NEG")
+      wgvr: this.createField("NEG"),
+      name: this.createField("UNAVAILABLE")
     };
 
     // 1. Price Metrics
@@ -220,11 +222,18 @@ class MetricsCalculator {
       }
     }
 
-    // 2. Market Cap
+    // 2. Market Cap & Name
     let mcapVal = null;
-    if (avOverview && !avOverview.Information && avOverview.MarketCapitalization) {
-      mcapVal = Utils.parseNum(avOverview.MarketCapitalization);
-      m.mcap = this.createField(mcapVal, "API: Overview [MarketCapitalization]", Formatter.num(mcapVal));
+    if (avOverview && !avOverview.Information) {
+      if (avOverview.MarketCapitalization) {
+        mcapVal = Utils.parseNum(avOverview.MarketCapitalization);
+        m.mcap = this.createField(mcapVal, "API: Overview [MarketCapitalization]", Formatter.num(mcapVal));
+      }
+      if (avOverview.Name) {
+        const fullName = avOverview.Name;
+        const shortName = fullName.split(/\s+/).slice(0, 3).join(' ');
+        m.name = this.createField(shortName, "API: Overview [Name]", fullName);
+      }
     }
 
     // 3. Income Statement Metrics
