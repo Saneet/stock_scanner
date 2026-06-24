@@ -21,6 +21,8 @@ const COLUMN_CONFIG = [
   { header: "WPR", note: "Weighted Projected Revenue: Last 4 quarter revenue * (1 + Weighted Avg QtQ growth)", format: "large_currency", getValue: d => d.wpr.v, getNote: d => d.wpr.n },
   { header: "Price", note: "Current Stock Price", format: "currency", getValue: d => d.price.v, getNote: d => d.price.n },
   { header: "Wk %", note: "Week % Change", format: "percent", getValue: d => d.weekChange.v, getNote: d => d.weekChange.n },
+  { header: "P/S", note: "Price to Sales Ratio (TTM)", format: "number", getValue: d => d.ps.v, getNote: d => d.ps.n },
+  { header: "P/E", note: "Price to Earnings Ratio (TTM)", format: "number", getValue: d => d.pe.v, getNote: d => d.pe.n },
   { header: "Name", note: "Company Name", format: "string", getValue: d => d.name.v, getNote: d => d.name.n }
 ];
 
@@ -183,6 +185,8 @@ class MetricsCalculator {
       industry: this.createField(industry, "User Input", industry),
       price: this.createField("UNAVAILABLE"),
       weekChange: this.createField("UNAVAILABLE"),
+      ps: this.createField("UNAVAILABLE"),
+      pe: this.createField("UNAVAILABLE"),
       mcap: this.createField("UNAVAILABLE"),
       lqr: this.createField("UNAVAILABLE"),
       yoy: this.createField("UNAVAILABLE"),
@@ -222,7 +226,7 @@ class MetricsCalculator {
       }
     }
 
-    // 2. Market Cap & Name
+    // 2. Market Cap, Name, P/S, P/E
     let mcapVal = null;
     if (avOverview && !avOverview.Information) {
       if (avOverview.MarketCapitalization) {
@@ -233,6 +237,14 @@ class MetricsCalculator {
         const fullName = avOverview.Name;
         const shortName = fullName.split(/\s+/).slice(0, 3).join(' ');
         m.name = this.createField(shortName, "API: Overview [Name]", fullName);
+      }
+      if (avOverview.PriceToSalesRatioTTM && avOverview.PriceToSalesRatioTTM !== "None") {
+        const psVal = Utils.parseNum(avOverview.PriceToSalesRatioTTM);
+        m.ps = this.createField(psVal, "API: Overview [PriceToSalesRatioTTM]", Formatter.num(psVal));
+      }
+      if (avOverview.PERatio && avOverview.PERatio !== "None") {
+        const peVal = Utils.parseNum(avOverview.PERatio);
+        m.pe = this.createField(peVal, "API: Overview [PERatio]", Formatter.num(peVal));
       }
     }
 
