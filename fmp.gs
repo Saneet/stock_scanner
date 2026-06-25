@@ -8,21 +8,21 @@ const COLUMN_CONFIG = [
   { header: "SVR", note: "Simple Valuation Ratio: Market Cap / (Last quarter revenue * 4)", format: "number", getValue: d => d.svr.v, getNote: d => d.svr.n },
   { header: "GVR", note: "Growth Valuation Ratio: Market Cap / (Projected Revenue)", format: "number", getValue: d => d.gvr.v, getNote: d => d.gvr.n },
   { header: "WGVR", note: "Weighted Growth Valuation Ratio: Market Cap / (Weighted Projected Revenue)", format: "number", getValue: d => d.wgvr.v, getNote: d => d.wgvr.n },
-  { header: "Latest QoQ", note: "Sequential quarter-over-quarter revenue growth.", format: "string", getValue: d => d.latestQoq.v, getNote: d => d.latestQoq.n },
-  { header: "QtQ Gr", note: "Latest Quarter to Quarter growth (YoY for the quarter) for last 4 quarters.", format: "string", getValue: d => d.qtqStr.v, getNote: d => d.qtqStr.n },
+  { header: "Seq QoQ", note: "Sequential quarter-over-quarter revenue growth.", format: "string", getValue: d => d.latestQoq.v, getNote: d => d.latestQoq.n },
+  { header: "YoY QtQ", note: "Latest Quarter to Quarter growth (YoY for the quarter) for last 4 quarters.", format: "string", getValue: d => d.qtqStr.v, getNote: d => d.qtqStr.n },
   { header: "YoY Gr", note: "Year over year revenue growth for the last 3 fiscal years.", format: "string", getValue: d => d.yoy.v, getNote: d => d.yoy.n },
   { header: "Margin", note: "Gross Margin for the last 4 quarters.", format: "string", getValue: d => d.margin.v, getNote: d => d.margin.n },
   { header: "FCF Yld", note: "Free Cash Flow Yield.", format: "percent", getValue: d => d.fcf.v, getNote: d => d.fcf.n },
+  { header: "% Change", note: "1W, 1M, 3M, 1Y % Change", format: "string", getValue: d => d.pctChange.v, getNote: d => d.pctChange.n },
   { header: "MCap", note: "Market Capitalization", format: "large_currency", getValue: d => d.mcap.v, getNote: d => d.mcap.n },
+  { header: "Price", note: "Current Stock Price", format: "currency", getValue: d => d.price.v, getNote: d => d.price.n },
+  { header: "P/S", note: "Price to Sales Ratio (TTM)", format: "number", getValue: d => d.ps.v, getNote: d => d.ps.n },
+  { header: "P/E", note: "Price to Earnings Ratio (TTM)", format: "number", getValue: d => d.pe.v, getNote: d => d.pe.n },
   { header: "LQR", note: "Last Quarter Revenue", format: "large_currency", getValue: d => d.lqr.v, getNote: d => d.lqr.n },
-  { header: "AQG", note: "Average Quarter to Quarter growth of the last 4 quarters.", format: "percent", getValue: d => d.aqg.v, getNote: d => d.aqg.n },
-  { header: "WAQG", note: "Weighted Avg QtQ growth (0.4 for latest, 0.3, 0.2, 0.1 for oldest).", format: "percent", getValue: d => d.waqg.v, getNote: d => d.waqg.n },
   { header: "PR", note: "Projected Revenue: Last 4 quarter revenue * (1 + Avg QtQ growth)", format: "large_currency", getValue: d => d.pr.v, getNote: d => d.pr.n },
   { header: "WPR", note: "Weighted Projected Revenue: Last 4 quarter revenue * (1 + Weighted Avg QtQ growth)", format: "large_currency", getValue: d => d.wpr.v, getNote: d => d.wpr.n },
-  { header: "Price", note: "Current Stock Price", format: "currency", getValue: d => d.price.v, getNote: d => d.price.n },
-  { header: "% Change", note: "1W, 1M, 3M, 1Y % Change", format: "string", getValue: d => d.pctChange.v, getNote: d => d.pctChange.n },
-  { header: "P/S", note: "Price to Sales Ratio (TTM)", format: "number", getValue: d => d.ps.v, getNote: d => d.ps.n },
-  { header: "P/E", note: "Price to Earnings Ratio (TTM)", format: "number", getValue: d => d.pe.v, getNote: d => d.pe.n }
+  { header: "AQG", note: "Average Quarter to Quarter growth of the last 4 quarters.", format: "percent", getValue: d => d.aqg.v, getNote: d => d.aqg.n },
+  { header: "WAQG", note: "Weighted Avg QtQ growth (0.4 for latest, 0.3, 0.2, 0.1 for oldest).", format: "percent", getValue: d => d.waqg.v, getNote: d => d.waqg.n },
 ];
 
 /**
@@ -83,7 +83,7 @@ class FmpApiClient {
   enforceRateLimit() {
     const now = new Date().getTime();
     const timePassed = now - this.lastRequestTime;
-    const requiredDelay = 250; 
+    const requiredDelay = 1200;//300 calls/minute for 6 calls.
     if (timePassed < requiredDelay) Utilities.sleep(requiredDelay - timePassed);
     this.lastRequestTime = new Date().getTime();
   }
