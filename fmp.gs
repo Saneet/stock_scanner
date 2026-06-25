@@ -20,10 +20,9 @@ const COLUMN_CONFIG = [
   { header: "PR", note: "Projected Revenue: Last 4 quarter revenue * (1 + Avg QtQ growth)", format: "large_currency", getValue: d => d.pr.v, getNote: d => d.pr.n },
   { header: "WPR", note: "Weighted Projected Revenue: Last 4 quarter revenue * (1 + Weighted Avg QtQ growth)", format: "large_currency", getValue: d => d.wpr.v, getNote: d => d.wpr.n },
   { header: "Price", note: "Current Stock Price", format: "currency", getValue: d => d.price.v, getNote: d => d.price.n },
-  { header: "Wk %", note: "Week % Change", format: "percent", getValue: d => d.weekChange.v, getNote: d => d.weekChange.n },
+  { header: "% Change", note: "1W, 1M, 3M, 1Y % Change", format: "string", getValue: d => d.pctChange.v, getNote: d => d.pctChange.n },
   { header: "P/S", note: "Price to Sales Ratio (TTM)", format: "number", getValue: d => d.ps.v, getNote: d => d.ps.n },
-  { header: "P/E", note: "Price to Earnings Ratio (TTM)", format: "number", getValue: d => d.pe.v, getNote: d => d.pe.n },
-  { header: "Name", note: "Company Name", format: "string", getValue: d => d.name.v, getNote: d => d.name.n }
+  { header: "P/E", note: "Price to Earnings Ratio (TTM)", format: "number", getValue: d => d.pe.v, getNote: d => d.pe.n }
 ];
 
 /**
@@ -40,6 +39,10 @@ class Utils {
 
 class Formatter {
   static toPercentStr(value) { return value === "UNAVAILABLE" ? value : `${(value * 100).toFixed(2)}%`; }
+  static toDirectPercentStr(value) {
+    if (value === null || value === undefined || isNaN(value)) return "N/A";
+    return `${parseFloat(value).toFixed(2)}%`;
+  }
   static num(val) { 
     if (val === "UNAVAILABLE" || val === "NEG") return val;
     return Number(val).toLocaleString(undefined, { maximumFractionDigits: 2 }); 
@@ -85,50 +88,53 @@ class FmpApiClient {
     this.lastRequestTime = new Date().getTime();
   }
 
-  fetchStable(endpoint, ticker, extraParams = "") {
+  fetchTickerDataBatch(ticker) {
     this.enforceRateLimit();
-    const url = `https://financialmodelingprep.com/stable${endpoint}?symbol=${ticker}&apikey=${this.getApiKey()}${extraParams ? '&' + extraParams : ''}`;
-    return this._execute(url);
-  }
+    const key = this.getApiKey();
 
-  fetchV3(endpointPath, extraParams = "") {
-    this.enforceRateLimit();
-    const url = `https://financialmodelingprep.com/api/v3${endpointPath}?apikey=${this.getApiKey()}${extraParams ? '&' + extraParams : ''}`;
-    return this._execute(url);
-  }
+    const endpoints = [
+      `https://financialmodelingprep.com/stable/income-statement?symbol=${ticker}&limit=5&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/income-statement?symbol=${ticker}&period=quarter&limit=10&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/cash-flow-statement?symbol=${ticker}&limit=2&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/profile?symbol=${ticker}&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/ratios-ttm?symbol=${ticker}&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/stock-price-change?symbol=${ticker}&apikey=${key}`,
+      `https://financialmodelingprep.com/api/v3/quote/${ticker}?apikey=${key}`,
+      `https://financialmodelingprep.com/api/v3/historical-price-full/${ticker}?timeseries=10&apikey=${key}`
+    ];
 
-  _execute(url) {
-    try {
-      const response = this.fetcher.fetch(url, { muteHttpExceptions: true });
-      if (response.getResponseCode() !== 200) {
-        if (response.getResponseCode() === 429) {
-          Utilities.sleep(2000); 
-          return this._execute(url); 
-        }
-        return null;
-      }
-      const txt = response.getContentText();
-      if (txt.includes("Limit Reach") || txt.includes("Error Message") || txt.includes("Not Found")) {
-        return null;
-      }
-      return JSON.parse(txt);
-    } catch (e) {
-      return null;
+    const requests = endpoints.map(url => ({
+      url: url,
+      method: 'get',
+      muteHttpExceptions: true
+    }));
+
+    let responses = this.fetcher.fetchAll(requests);
+
+    // Single retry block in case the batch hits a 429 rate limit
+    if (responses.some(r => r.getResponseCode() === 429)) {
+      Utilities.sleep(2000); 
+      responses = this.fetcher.fetchAll(requests);
     }
-  }
 
-  fetchIncomeStatementAnnual(ticker) { return this.fetchStable(`/income-statement`, ticker, "limit=5"); }
-  fetchIncomeStatementQuarterly(ticker) { return this.fetchStable(`/income-statement`, ticker, "period=quarter&limit=10"); }
-  fetchCashFlow(ticker) { return this.fetchStable(`/cash-flow-statement`, ticker, "limit=2"); }
-  fetchProfile(ticker) { return this.fetchStable(`/profile`, ticker); }
-  
-  // Updated to use the /stable/ endpoints based on your sample data
-  fetchRatiosTTM(ticker) { return this.fetchStable(`/ratios-ttm`, ticker); }
-  fetchStockPriceChange(ticker) { return this.fetchStable(`/stock-price-change`, ticker); }
-  
-  // Fallbacks using v3
-  fetchQuote(ticker) { return this.fetchV3(`/quote/${ticker}`); }
-  fetchHistorical(ticker) { return this.fetchV3(`/historical-price-full/${ticker}`, "timeseries=10"); }
+    const parse = (res) => {
+      if (!res || res.getResponseCode() !== 200) return null;
+      const txt = res.getContentText();
+      if (txt.includes("Limit Reach") || txt.includes("Error Message") || txt.includes("Not Found")) return null;
+      try { return JSON.parse(txt); } catch(e) { return null; }
+    };
+
+    return {
+      incomeAnnual: parse(responses[0]),
+      incomeQuarterly: parse(responses[1]),
+      cashFlow: parse(responses[2]),
+      profile: parse(responses[3]),
+      ratios: parse(responses[4]),
+      priceChange: parse(responses[5]),
+      quote: parse(responses[6]),
+      historical: parse(responses[7])
+    };
+  }
 }
 
 class DataFetcher {
@@ -145,37 +151,30 @@ class DataFetcher {
       if (!ticker) return; 
       Logger.log(`Processing: ${ticker}`);
       
-      let fmpIncomeAnnual = this.fmp.fetchIncomeStatementAnnual(ticker);
-      let fmpIncomeQuarterly = this.fmp.fetchIncomeStatementQuarterly(ticker);
-      let fmpCashFlow = this.fmp.fetchCashFlow(ticker);
-      let fmpProfileRaw = this.fmp.fetchProfile(ticker);
-      let fmpQuoteRaw = this.fmp.fetchQuote(ticker);
-      let fmpRatiosRaw = this.fmp.fetchRatiosTTM(ticker);
-      let fmpPriceChangeRaw = this.fmp.fetchStockPriceChange(ticker);
-      let fmpHistoricalRaw = this.fmp.fetchHistorical(ticker);
+      const batch = this.fmp.fetchTickerDataBatch(ticker);
 
       let recentPrices = [];
-      if (fmpHistoricalRaw && fmpHistoricalRaw.historical) {
-        const series = fmpHistoricalRaw.historical;
+      if (batch.historical && batch.historical.historical) {
+        const series = batch.historical.historical;
         recentPrices = series.slice(0, 10).map(d => ({ date: d.date, close: Utils.parseNum(d.close) }));
       }
 
       // Unwrap arrays for endpoints that return array wrappers
-      let fmpProfile = (fmpProfileRaw && fmpProfileRaw.length > 0) ? fmpProfileRaw[0] : null;
-      let fmpQuote = (fmpQuoteRaw && fmpQuoteRaw.length > 0) ? fmpQuoteRaw[0] : null;
-      let fmpRatios = (fmpRatiosRaw && fmpRatiosRaw.length > 0) ? fmpRatiosRaw[0] : null;
-      let fmpPriceChange = (fmpPriceChangeRaw && fmpPriceChangeRaw.length > 0) ? fmpPriceChangeRaw[0] : null;
+      let fmpProfile = (batch.profile && batch.profile.length > 0) ? batch.profile[0] : null;
+      let fmpQuote = (batch.quote && batch.quote.length > 0) ? batch.quote[0] : null;
+      let fmpRatios = (batch.ratios && batch.ratios.length > 0) ? batch.ratios[0] : null;
+      let fmpPriceChange = (batch.priceChange && batch.priceChange.length > 0) ? batch.priceChange[0] : null;
 
-      if (!fmpIncomeAnnual && !fmpProfile && recentPrices.length === 0) {
+      if (!batch.incomeAnnual && !fmpProfile && recentPrices.length === 0) {
         errorLog.push(`[${ticker}] No API data found or Limit Hit.`);
       }
 
       dataset[ticker] = { 
         ticker: input.symbol, 
         industry: input.industry, 
-        fmpIncomeAnnual: Array.isArray(fmpIncomeAnnual) ? fmpIncomeAnnual : [], 
-        fmpIncomeQuarterly: Array.isArray(fmpIncomeQuarterly) ? fmpIncomeQuarterly : [], 
-        fmpCashFlow: Array.isArray(fmpCashFlow) ? fmpCashFlow : [], 
+        fmpIncomeAnnual: Array.isArray(batch.incomeAnnual) ? batch.incomeAnnual : [], 
+        fmpIncomeQuarterly: Array.isArray(batch.incomeQuarterly) ? batch.incomeQuarterly : [], 
+        fmpCashFlow: Array.isArray(batch.cashFlow) ? batch.cashFlow : [], 
         fmpProfile, fmpQuote, fmpRatios, fmpPriceChange, recentPrices 
       };
     });
@@ -200,7 +199,7 @@ class MetricsCalculator {
       ticker: this.createField(ticker, "User Input", ticker),
       industry: this.createField(industry, "User Input", industry),
       price: this.createField("UNAVAILABLE"),
-      weekChange: this.createField("UNAVAILABLE"),
+      pctChange: this.createField("UNAVAILABLE"),
       ps: this.createField("UNAVAILABLE"),
       pe: this.createField("UNAVAILABLE"),
       mcap: this.createField("UNAVAILABLE"),
@@ -216,9 +215,29 @@ class MetricsCalculator {
       wpr: this.createField("NEG"),
       svr: this.createField("NEG"),
       gvr: this.createField("NEG"),
-      wgvr: this.createField("NEG"),
-      name: this.createField("UNAVAILABLE")
+      wgvr: this.createField("NEG")
     };
+
+    // Ticker Note Profile Info (Company Name, CEO, Country, ADR, Years Public)
+    let tickerNoteStr = "User Input";
+    if (fmpProfile) {
+      const name = fmpProfile.companyName || "N/A";
+      const ceo = fmpProfile.ceo || "N/A";
+      const country = fmpProfile.country || "N/A";
+      const isAdr = fmpProfile.isAdr !== undefined ? fmpProfile.isAdr : "N/A";
+      
+      let yearsPublic = "N/A";
+      if (fmpProfile.ipoDate) {
+        const ipo = new Date(fmpProfile.ipoDate);
+        if (!isNaN(ipo.getTime())) {
+          const diffMs = Date.now() - ipo.getTime();
+          yearsPublic = (diffMs / (1000 * 60 * 60 * 24 * 365.25)).toFixed(1);
+        }
+      }
+      
+      tickerNoteStr = `${name}\nCEO: ${ceo}\nCountry: ${country}\nADR: ${isAdr}\nYears Public: ${yearsPublic}`;
+      m.ticker = this.createField(ticker, "API: Profile", tickerNoteStr);
+    }
 
     // 1. Price Metrics
     let currentPrice = null;
@@ -233,39 +252,38 @@ class MetricsCalculator {
       m.price = this.createField(currentPrice, "API: Historical Price (Latest)", Formatter.num(currentPrice));
     }
     
-    // Weekly % Change logic updated to use FMP's stock-price-change payload
+    // % Change logic (1W, 1M, 3M, 1Y)
     if (fmpPriceChange && fmpPriceChange["5D"] !== undefined && fmpPriceChange["5D"] !== null) {
-      // FMP returns percentages as whole numbers (e.g. -20.17 for -20.17%). 
-      // We divide by 100 so the Google Sheet formatting (0.00%) renders it correctly.
-      const wChg = Utils.parseNum(fmpPriceChange["5D"]) / 100;
-      m.weekChange = this.createField(wChg, "API: Stock Price Change [5D]", `Raw API Value: ${fmpPriceChange["5D"]}`);
+      const w1 = Formatter.toDirectPercentStr(fmpPriceChange["5D"]);
+      const m1 = Formatter.toDirectPercentStr(fmpPriceChange["1M"]);
+      const m3 = Formatter.toDirectPercentStr(fmpPriceChange["3M"]);
+      const y1 = Formatter.toDirectPercentStr(fmpPriceChange["1Y"]);
+      
+      const pctStr = `1W: ${w1}\n1M: ${m1}\n3M: ${m3}\n1Y: ${y1}`;
+      const noteStr = `Raw values:\n1W (5D): ${fmpPriceChange["5D"]}\n1M: ${fmpPriceChange["1M"]}\n3M: ${fmpPriceChange["3M"]}\n1Y: ${fmpPriceChange["1Y"]}`;
+      
+      m.pctChange = this.createField(pctStr, "API: Stock Price Change", noteStr);
     } else if (recentPrices && recentPrices.length > 0 && currentPrice) {
-      // Fallback manual calculation if the specific endpoint fails
+      // Fallback manual calculation for 1W if the specific endpoint fails
       const targetDateMs = new Date(recentPrices[0].date).getTime() - (7 * 24 * 60 * 60 * 1000);
       let pastPrice = recentPrices.find(p => new Date(p.date).getTime() <= targetDateMs)?.close;
       if (!pastPrice && recentPrices.length > 5) pastPrice = recentPrices[5].close;
       
       if (pastPrice) {
         const wChg = (currentPrice - pastPrice) / pastPrice;
-        m.weekChange = this.createField(wChg, "(Current Price - 7 Day Old Price) / 7 Day Old Price", `(${Formatter.num(currentPrice)} - ${Formatter.num(pastPrice)}) / ${Formatter.num(pastPrice)}`);
+        m.pctChange = this.createField(`1W: ${Formatter.toPercentStr(wChg)}\n1M: N/A\n3M: N/A\n1Y: N/A`, "(Current Price - 7 Day Old Price) / 7 Day Old Price", `1W Fallback: (${Formatter.num(currentPrice)} - ${Formatter.num(pastPrice)}) / ${Formatter.num(pastPrice)}`);
       }
     }
 
-    // 2. Market Cap, Name, P/S, P/E
+    // 2. Market Cap, P/S, P/E
     let mcapVal = null;
     if (fmpProfile) {
       if (fmpProfile.marketCap || fmpProfile.mktCap) {
         mcapVal = Utils.parseNum(fmpProfile.marketCap || fmpProfile.mktCap);
         m.mcap = this.createField(mcapVal, "API: Profile [marketCap]", Formatter.num(mcapVal));
       }
-      if (fmpProfile.companyName) {
-        const fullName = fmpProfile.companyName;
-        const shortName = fullName.split(/\s+/).slice(0, 3).join(' ');
-        m.name = this.createField(shortName, "API: Profile [companyName]", fullName);
-      }
     }
     
-    // P/S & P/E Logic updated to use exact property names from /stable/ratios-ttm
     if (fmpRatios) {
       if (fmpRatios.priceToSalesRatioTTM) {
         const psVal = Utils.parseNum(fmpRatios.priceToSalesRatioTTM);
