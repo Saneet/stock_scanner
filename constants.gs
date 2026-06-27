@@ -1,13 +1,22 @@
 /**
  * CONFIGURATION & CONSTANTS
  */
-
 const CONSTANTS = {
-  ALPHA_VANTAGE_API_KEYS: ["..."], 
-  INPUT_DATA: [
-    { symbol: 'GOOG', industry: 'Tech' },
-  ],
-  SPREADSHEET_ID: "...", // Replace with your target ID
-  TARGET_SHEET_NAME: "..."
+  FMP_API_KEYS: ["..."],
+  ALPHA_VANTAGE_API_KEYS: ["..."],
+  SPREADSHEET_ID: "...",
 };
 
+const STOCKS_AI = {
+  TARGET_SHEET_NAME: "FIN_DASHBOARD_AI",
+  INPUT_DATA: [
+  { 'symbol': 'CRWV', 'industry': 'AI Cloud' },
+  ],
+};
+
+const STOCKS_OTHER = {
+  TARGET_SHEET_NAME: "FIN_DASHBOARD_OTHER",
+  INPUT_DATA: [
+  { 'symbol': 'UBER', 'industry': 'Tech' },
+  ],
+}
