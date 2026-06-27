@@ -1,5 +1,7 @@
 /**
- * COLUMN CONFIGURATION (CUSTOMIZABLE SEQUENCE)
+ * ==========================================
+ * CONFIGURATION & CONSTANTS
+ * ==========================================
  */
 
 const COLUMN_CONFIG = [
@@ -26,7 +28,9 @@ const COLUMN_CONFIG = [
 ];
 
 /**
+ * ==========================================
  * UTILITIES
+ * ==========================================
  */
 
 class Utils {
@@ -63,117 +67,9 @@ class Formatter {
 }
 
 /**
- * API CLIENTS (DATA FETCHING)
- */
-
-class FmpApiClient {
-  constructor(apiKeys, fetcher = UrlFetchApp) {
-    this.apiKeys = apiKeys;
-    this.keyIndex = 0;
-    this.lastRequestTime = 0;
-    this.fetcher = fetcher;
-  }
-
-  getApiKey() {
-    const key = this.apiKeys[this.keyIndex];
-    this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
-    return key;
-  }
-
-  enforceRateLimit() {
-    const now = new Date().getTime();
-    const timePassed = now - this.lastRequestTime;
-    const requiredDelay = 1200;//300 calls/minute for 6 calls.
-    if (timePassed < requiredDelay) Utilities.sleep(requiredDelay - timePassed);
-    this.lastRequestTime = new Date().getTime();
-  }
-
-  fetchTickerDataBatch(ticker) {
-    this.enforceRateLimit();
-    const key = this.getApiKey();
-
-    const endpoints = [
-      `https://financialmodelingprep.com/stable/income-statement?symbol=${ticker}&limit=5&apikey=${key}`,
-      `https://financialmodelingprep.com/stable/income-statement?symbol=${ticker}&period=quarter&limit=10&apikey=${key}`,
-      `https://financialmodelingprep.com/stable/cash-flow-statement?symbol=${ticker}&limit=2&apikey=${key}`,
-      `https://financialmodelingprep.com/stable/profile?symbol=${ticker}&apikey=${key}`,
-      `https://financialmodelingprep.com/stable/ratios-ttm?symbol=${ticker}&apikey=${key}`,
-      `https://financialmodelingprep.com/stable/stock-price-change?symbol=${ticker}&apikey=${key}`
-    ];
-
-    const requests = endpoints.map(url => ({
-      url: url,
-      method: 'get',
-      muteHttpExceptions: true
-    }));
-
-    let responses = this.fetcher.fetchAll(requests);
-
-    // Single retry block in case the batch hits a 429 rate limit
-    if (responses.some(r => r.getResponseCode() === 429)) {
-      Utilities.sleep(2000); 
-      responses = this.fetcher.fetchAll(requests);
-    }
-
-    const parse = (res) => {
-      if (!res || res.getResponseCode() !== 200) return null;
-      const txt = res.getContentText();
-      if (txt.includes("Limit Reach") || txt.includes("Error Message") || txt.includes("Not Found")) return null;
-      try { return JSON.parse(txt); } catch(e) { return null; }
-    };
-
-    return {
-      incomeAnnual: parse(responses[0]),
-      incomeQuarterly: parse(responses[1]),
-      cashFlow: parse(responses[2]),
-      profile: parse(responses[3]),
-      ratios: parse(responses[4]),
-      priceChange: parse(responses[5])
-    };
-  }
-}
-
-class DataFetcher {
-  constructor() {
-    this.fmp = new FmpApiClient(CONSTANTS.FMP_API_KEYS);
-  }
-
-  fetchAll(inputList, errorLog) {
-    Logger.log("Fetching FMP Data...");
-    const dataset = {};
-
-    inputList.forEach(input => {
-      const ticker = input.symbol;
-      if (!ticker) return; 
-      Logger.log(`Processing: ${ticker}`);
-      
-      const batch = this.fmp.fetchTickerDataBatch(ticker);
-
-      // Unwrap arrays for endpoints that return array wrappers
-      let fmpProfile = (batch.profile && batch.profile.length > 0) ? batch.profile[0] : null;
-      let fmpRatios = (batch.ratios && batch.ratios.length > 0) ? batch.ratios[0] : null;
-      let fmpPriceChange = (batch.priceChange && batch.priceChange.length > 0) ? batch.priceChange[0] : null;
-
-      if (!batch.incomeAnnual && !fmpProfile) {
-        errorLog.push(`[${ticker}] No API data found or Limit Hit.`);
-      }
-
-      dataset[ticker] = { 
-        ticker: input.symbol, 
-        industry: input.industry, 
-        fmpIncomeAnnual: Array.isArray(batch.incomeAnnual) ? batch.incomeAnnual : [], 
-        fmpIncomeQuarterly: Array.isArray(batch.incomeQuarterly) ? batch.incomeQuarterly : [], 
-        fmpCashFlow: Array.isArray(batch.cashFlow) ? batch.cashFlow : [], 
-        fmpProfile, fmpRatios, fmpPriceChange 
-      };
-    });
-    
-    return dataset;
-  }
-}
-
-/**
- * CALCULATORS (Business Logic)
+ * ==========================================
+ * BUSINESS LOGIC & CALCULATORS
+ * ==========================================
  */
 
 class MetricsCalculator {
@@ -273,7 +169,6 @@ class MetricsCalculator {
       const lqrVal = Utils.parseNum(q[0].revenue);
       m.lqr = this.createField(lqrVal, "API: Income Statement [Quarterly revenue 0]", Formatter.num(lqrVal));
 
-      // Latest QoQ & Margins
       const qoqArr = [], qoqNotes = [];
       const marginArr = [], marginNotes = [];
       
@@ -401,12 +296,178 @@ class MetricsCalculator {
 }
 
 /**
+ * ==========================================
+ * API CLIENTS & INTERFACES (Dependency Injection)
+ * ==========================================
+ */
+
+/**
+ * @typedef {Object} RawTickerData
+ * @property {Array<Object>|null} incomeAnnual
+ * @property {Array<Object>|null} incomeQuarterly
+ * @property {Array<Object>|null} cashFlow
+ * @property {Array<Object>|null} profile
+ * @property {Array<Object>|null} ratios
+ * @property {Array<Object>|null} priceChange
+ */
+
+/**
+ * @interface IApiClient
+ */
+class IApiClient {
+  /**
+   * @param {string} ticker 
+   * @returns {RawTickerData}
+   */
+  fetchTickerDataBatch(ticker) {
+    throw new Error("Method 'fetchTickerDataBatch(ticker)' must be implemented.");
+  }
+}
+
+/**
+ * The standard FMP API Client
+ */
+class FmpApiClient /* implements IApiClient */ {
+  constructor(apiKeys, fetcher = UrlFetchApp) {
+    this.apiKeys = apiKeys;
+    this.keyIndex = 0;
+    this.lastRequestTime = 0;
+    this.fetcher = fetcher;
+  }
+
+  getApiKey() {
+    const key = this.apiKeys[this.keyIndex];
+    this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
+    return key;
+  }
+
+  enforceRateLimit() {
+    const now = new Date().getTime();
+    const timePassed = now - this.lastRequestTime;
+    const requiredDelay = 1200; // 300 calls/minute for 6 calls.
+    if (timePassed < requiredDelay) Utilities.sleep(requiredDelay - timePassed);
+    this.lastRequestTime = new Date().getTime();
+  }
+
+  fetchTickerDataBatch(ticker) {
+    this.enforceRateLimit();
+    const key = this.getApiKey();
+
+    const endpoints = [
+      `https://financialmodelingprep.com/stable/income-statement?symbol=${ticker}&limit=5&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/income-statement?symbol=${ticker}&period=quarter&limit=10&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/cash-flow-statement?symbol=${ticker}&limit=2&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/profile?symbol=${ticker}&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/ratios-ttm?symbol=${ticker}&apikey=${key}`,
+      `https://financialmodelingprep.com/stable/stock-price-change?symbol=${ticker}&apikey=${key}`
+    ];
+
+    const requests = endpoints.map(url => ({
+      url: url,
+      method: 'get',
+      muteHttpExceptions: true
+    }));
+
+    let responses = this.fetcher.fetchAll(requests);
+
+    if (responses.some(r => r.getResponseCode() === 429)) {
+      Utilities.sleep(2000); 
+      responses = this.fetcher.fetchAll(requests);
+    }
+
+    const parse = (res) => {
+      if (!res || res.getResponseCode() !== 200) return null;
+      const txt = res.getContentText();
+      if (txt.includes("Limit Reach") || txt.includes("Error Message") || txt.includes("Not Found")) return null;
+      try { return JSON.parse(txt); } catch(e) { return null; }
+    };
+
+    return {
+      incomeAnnual: parse(responses[0]),
+      incomeQuarterly: parse(responses[1]),
+      cashFlow: parse(responses[2]),
+      profile: parse(responses[3]),
+      ratios: parse(responses[4]),
+      priceChange: parse(responses[5])
+    };
+  }
+}
+
+/**
+ * An Alternate API Client (e.g., Alpha Vantage, Yahoo, etc.)
+ */
+class AlternateApiClient /* implements IApiClient */ {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+  }
+
+  fetchTickerDataBatch(ticker) {
+    // Implement your new API calls here and map them to the return object
+    Logger.log(`[AlternateApiClient] Fetching data for ${ticker}`);
+    return {
+      incomeAnnual: [],
+      incomeQuarterly: [],
+      cashFlow: [],
+      profile: [],
+      ratios: [],
+      priceChange: []
+    };
+  }
+}
+
+class DataFetcher {
+  /**
+   * @param {IApiClient} apiClient
+   */
+  constructor(apiClient) {
+    this.apiClient = apiClient;
+  }
+
+  fetchAll(inputList, errorLog) {
+    Logger.log("Fetching API Data...");
+    const dataset = {};
+
+    inputList.forEach(input => {
+      const ticker = input.symbol;
+      if (!ticker) return; 
+      Logger.log(`Processing: ${ticker}`);
+      
+      const batch = this.apiClient.fetchTickerDataBatch(ticker);
+
+      let fmpProfile = (batch.profile && batch.profile.length > 0) ? batch.profile[0] : null;
+      let fmpRatios = (batch.ratios && batch.ratios.length > 0) ? batch.ratios[0] : null;
+      let fmpPriceChange = (batch.priceChange && batch.priceChange.length > 0) ? batch.priceChange[0] : null;
+
+      if (!batch.incomeAnnual && !fmpProfile) {
+        errorLog.push(`[${ticker}] No API data found or Limit Hit.`);
+      }
+
+      dataset[ticker] = { 
+        ticker: input.symbol, 
+        industry: input.industry, 
+        fmpIncomeAnnual: Array.isArray(batch.incomeAnnual) ? batch.incomeAnnual : [], 
+        fmpIncomeQuarterly: Array.isArray(batch.incomeQuarterly) ? batch.incomeQuarterly : [], 
+        fmpCashFlow: Array.isArray(batch.cashFlow) ? batch.cashFlow : [], 
+        fmpProfile, fmpRatios, fmpPriceChange 
+      };
+    });
+    
+    return dataset;
+  }
+}
+
+/**
+ * ==========================================
  * APPLICATION & SHEET WRITER
+ * ==========================================
  */
 
 class DashboardProcessor {
-  constructor() {
-    this.fetcher = new DataFetcher();
+  /**
+   * @param {IApiClient} apiClient
+   */
+  constructor(apiClient) {
+    this.fetcher = new DataFetcher(apiClient);
     this.errors = [];
   }
 
@@ -415,9 +476,9 @@ class DashboardProcessor {
     const rowsValues = [];
     const rowsNotes = [];
 
-    input.INPUT_DATA.forEach((input) => {
+    input.INPUT_DATA.forEach((inputItem) => {
       try {
-        const data = rawDataMap[input.symbol];
+        const data = rawDataMap[inputItem.symbol];
         if (data) {
           const metrics = MetricsCalculator.calculateAll(data);
           const rowData = COLUMN_CONFIG.map(col => col.getValue(metrics));
@@ -427,7 +488,7 @@ class DashboardProcessor {
           rowsNotes.push(rowNote);
         }
       } catch (e) {
-        this.errors.push(`[${input.symbol}] Processing Error: ${e.message}`);
+        this.errors.push(`[${inputItem.symbol}] Processing Error: ${e.message}`);
       }
     });
 
@@ -450,7 +511,6 @@ class SheetWriter {
       sheet.clearNotes();
       sheet.getRange("A1:Z100").clearDataValidations();
       
-      // REMOVE THE OLD FILTER IF IT EXISTS
       if (sheet.getFilter()) {
         sheet.getFilter().remove();
       }
@@ -463,15 +523,13 @@ class SheetWriter {
     const DATA_START_ROW = 2;                 
     const TOTAL_DATA_ROWS = rowsValues.length;
 
-    // Write Headers and Column Description Notes
     sheet.getRange(HEADER_ROW, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
     sheet.getRange(HEADER_ROW, 1, 1, headers.length).setNotes([headerNotes]);
 
-    // Write Data, Cell Calculation Notes, and Apply Dynamic Formatting
     if (TOTAL_DATA_ROWS > 0) {
       const dataRange = sheet.getRange(DATA_START_ROW, 1, TOTAL_DATA_ROWS, headers.length);
       dataRange.setValues(rowsValues);
-      dataRange.setNotes(rowsNotes); // Injects the formula calculations directly into cell notes
+      dataRange.setNotes(rowsNotes); 
       
       COLUMN_CONFIG.forEach((colDef, idx) => {
         const colNum = idx + 1;
@@ -493,7 +551,6 @@ class SheetWriter {
     sheet.getRange(1, 1, TOTAL_DATA_ROWS + 1, headers.length).createFilter();
     this.autoResizeWithLimits(sheet, headers.length);
 
-    // Print Error Logs below the table
     const errorStartRow = DATA_START_ROW + Math.max(TOTAL_DATA_ROWS, 1) + 2;
     const logText = errors.length > 0 ? errors.join("\n") : "No errors or warnings.";
     sheet.getRange(errorStartRow, 1).setValue("Errors & Warnings:\n" + logText)
@@ -518,19 +575,23 @@ class SheetWriter {
 }
 
 /**
- * MAIN EXECUTION
+ * ==========================================
+ * MAIN EXECUTION (Entry Points)
+ * ==========================================
  */
 
-function generateFinancialDashboard_AI() {
-  Logger.log("Starting Financial Dashboard Generation...");
-  const app = new DashboardProcessor();
+function generateFinancialDashboard_FMP_AI() {
+  Logger.log("Starting Dashboard Generation with FMP...");
+  const fmpClient = new FmpApiClient(CONSTANTS.FMP_API_KEYS);
+  const app = new DashboardProcessor(fmpClient);
   app.generateDashboard(STOCKS_AI);
-  Logger.log("Finished AI Dashboard Generation.");
+  Logger.log("Finished FMP Dashboard Generation.");
 }
 
-function generateFinancialDashboard_OTHER() {
-  Logger.log("Starting Financial Dashboard Generation...");
-  const app = new DashboardProcessor();
+function generateFinancialDashboard_FMP_OTHER() {
+  Logger.log("Starting Dashboard Generation with FMP...");
+  const fmpClient = new FmpApiClient(CONSTANTS.FMP_API_KEYS);
+  const app = new DashboardProcessor(fmpClient);
   app.generateDashboard(STOCKS_OTHER);
-  Logger.log("Finished OTHER Dashboard Generation.");
+  Logger.log("Finished FMP Dashboard Generation.");
 }
