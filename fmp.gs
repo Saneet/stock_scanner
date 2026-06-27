@@ -250,8 +250,8 @@ class MetricsCalculator {
     // 2. Market Cap, P/S, P/E
     let mcapVal = null;
     if (fmpProfile) {
-      if (fmpProfile.marketCap || fmpProfile.mktCap) {
-        mcapVal = Utils.parseNum(fmpProfile.marketCap || fmpProfile.mktCap);
+      if (fmpProfile.marketCap) {
+        mcapVal = Utils.parseNum(fmpProfile.marketCap);
         m.mcap = this.createField(mcapVal, "API: Profile [marketCap]", Formatter.num(mcapVal));
       }
     }
@@ -410,12 +410,12 @@ class DashboardProcessor {
     this.errors = [];
   }
 
-  generateDashboard() {
-    const rawDataMap = this.fetcher.fetchAll(CONSTANTS.INPUT_DATA, this.errors);
+  generateDashboard(input) {
+    const rawDataMap = this.fetcher.fetchAll(input.INPUT_DATA, this.errors);
     const rowsValues = [];
     const rowsNotes = [];
 
-    CONSTANTS.INPUT_DATA.forEach((input) => {
+    input.INPUT_DATA.forEach((input) => {
       try {
         const data = rawDataMap[input.symbol];
         if (data) {
@@ -432,17 +432,17 @@ class DashboardProcessor {
     });
 
     const writer = new SheetWriter();
-    writer.writeToSheet(rowsValues, rowsNotes, this.errors);
+    writer.writeToSheet(input.TARGET_SHEET_NAME, rowsValues, rowsNotes, this.errors);
   }
 }
 
 class SheetWriter {
-  writeToSheet(rowsValues, rowsNotes, errors) {
+  writeToSheet(sheetName, rowsValues, rowsNotes, errors) {
     const targetSpreadsheet = SpreadsheetApp.openById(CONSTANTS.SPREADSHEET_ID);
-    let sheet = targetSpreadsheet.getSheetByName(CONSTANTS.TARGET_SHEET_NAME);
+    let sheet = targetSpreadsheet.getSheetByName(sheetName);
     
     if (!sheet) {
-      sheet = targetSpreadsheet.insertSheet(CONSTANTS.TARGET_SHEET_NAME);
+      sheet = targetSpreadsheet.insertSheet(sheetName);
     } else {
       sheet.clear();
       const bandings = sheet.getBandings();
@@ -521,9 +521,16 @@ class SheetWriter {
  * MAIN EXECUTION
  */
 
-function generateFinancialDashboard() {
+function generateFinancialDashboard_AI() {
   Logger.log("Starting Financial Dashboard Generation...");
   const app = new DashboardProcessor();
-  app.generateDashboard();
-  Logger.log("Finished Dashboard Generation.");
+  app.generateDashboard(STOCKS_AI);
+  Logger.log("Finished AI Dashboard Generation.");
+}
+
+function generateFinancialDashboard_OTHER() {
+  Logger.log("Starting Financial Dashboard Generation...");
+  const app = new DashboardProcessor();
+  app.generateDashboard(STOCKS_OTHER);
+  Logger.log("Finished OTHER Dashboard Generation.");
 }
