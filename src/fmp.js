@@ -378,18 +378,6 @@ export class DataFetcher {
         fmpPriceChange
       };
     }
-      logger.info(`Finished fetching ticker data: ${ticker}`);
-      dataset[ticker] = {
-        ticker: input.symbol,
-        industry: input.industry,
-        fmpIncomeAnnual: Array.isArray(batch.incomeAnnual) ? batch.incomeAnnual : [],
-        fmpIncomeQuarterly: Array.isArray(batch.incomeQuarterly) ? batch.incomeQuarterly : [],
-        fmpCashFlow: Array.isArray(batch.cashFlow) ? batch.cashFlow : [],
-        fmpProfile,
-        fmpRatios,
-        fmpPriceChange
-      };
-    }
     logger.info("Completed data fetch for all tickers.");
     return dataset;
   }
