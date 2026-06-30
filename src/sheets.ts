@@ -1,18 +1,31 @@
-import fs from "fs";
-import path from "path";
-import { google } from "googleapis";
-import { logger } from "./logger.js";
+import fs from "node:fs";
+import path from "node:path";
+import { google, sheets_v4 } from "googleapis";
+import { logger } from "./logger";
+import { CellValue, ColumnFormat } from "./types";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
+interface GoogleSheetsClientConfig {
+  spreadsheetId?: string;
+  serviceAccountKey?: string | Record<string, unknown>;
+  serviceAccountCredentialsPath?: string;
+}
+
 export class GoogleSheetsClient {
-  constructor({ spreadsheetId, serviceAccountKey, serviceAccountCredentialsPath } = {}) {
-    this.spreadsheetId = spreadsheetId;
+  private readonly spreadsheetId: string;
+  private readonly serviceAccountKey?: string | Record<string, unknown>;
+  private readonly serviceAccountCredentialsPath?: string;
+  private authClient?: unknown;
+  private sheetsApi?: sheets_v4.Sheets;
+
+  constructor({ spreadsheetId, serviceAccountKey, serviceAccountCredentialsPath }: GoogleSheetsClientConfig = {}) {
+    this.spreadsheetId = spreadsheetId ?? "";
     this.serviceAccountKey = serviceAccountKey || process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
     this.serviceAccountCredentialsPath = serviceAccountCredentialsPath || process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
     if (!this.spreadsheetId || this.spreadsheetId === "YOUR_SPREADSHEET_ID") {
-      throw new Error("Missing SPREADSHEET_ID. Set SPREADSHEET_ID in environment or src/constants.js.");
+      throw new Error("Missing SPREADSHEET_ID. Set SPREADSHEET_ID in environment or src/constants.ts.");
     }
 
     if (!this.serviceAccountKey && !this.serviceAccountCredentialsPath) {
@@ -20,11 +33,11 @@ export class GoogleSheetsClient {
     }
   }
 
-  getCredentials() {
+  private getCredentials(): Record<string, unknown> {
     if (this.serviceAccountKey) {
       if (typeof this.serviceAccountKey === "string") {
         try {
-          return JSON.parse(this.serviceAccountKey);
+          return JSON.parse(this.serviceAccountKey) as Record<string, unknown>;
         } catch (error) {
           logger.error("Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY. Ensure it is valid JSON.", error);
           throw error;
@@ -38,13 +51,13 @@ export class GoogleSheetsClient {
       if (!fs.existsSync(resolvedPath)) {
         throw new Error(`Google service account key file not found: ${resolvedPath}`);
       }
-      return JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
+      return JSON.parse(fs.readFileSync(resolvedPath, "utf8")) as Record<string, unknown>;
     }
 
     throw new Error("Google service account credentials are required.");
   }
 
-  async getAuthClient() {
+  private async getAuthClient() {
     if (this.authClient) return this.authClient;
 
     const auth = new google.auth.GoogleAuth({
@@ -56,34 +69,39 @@ export class GoogleSheetsClient {
     return this.authClient;
   }
 
-  async getSheetsApi() {
+  private async getSheetsApi(): Promise<sheets_v4.Sheets> {
     if (this.sheetsApi) return this.sheetsApi;
     const auth = await this.getAuthClient();
-    this.sheetsApi = google.sheets({ version: "v4", auth });
+    this.sheetsApi = google.sheets({ version: "v4", auth: auth as never });
     return this.sheetsApi;
   }
 
-  async ensureSheet(sheetName) {
+  private async ensureSheet(sheetName: string): Promise<number> {
     const sheets = await this.getSheetsApi();
     const response = await sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId });
     const existingSheet = response.data.sheets?.find(sheet => sheet.properties?.title === sheetName);
+
     if (existingSheet) {
-      // Find and delete any existing banding styles on this sheet first to prevent conflicts during formatting.
-      // bandedRanges lives directly on the Sheet object
       const bandedRanges = existingSheet.bandedRanges || [];
       if (bandedRanges.length > 0) {
         const deleteRequests = bandedRanges.map(br => ({
           deleteBanding: { bandedRangeId: br.bandedRangeId }
         }));
+
         try {
           await sheets.spreadsheets.batchUpdate({
             spreadsheetId: this.spreadsheetId,
             requestBody: { requests: deleteRequests }
           });
           logger.info(`Deleted ${deleteRequests.length} existing banding ranges on sheet ${sheetName}`);
-        } catch (err) {
-          logger.warn(`Could not pre-delete banding on sheet ${sheetName}: ${err.message}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn(`Could not pre-delete banding on sheet ${sheetName}: ${message}`);
         }
+      }
+
+      if (existingSheet.properties?.sheetId === undefined || existingSheet.properties.sheetId === null) {
+        throw new Error(`Sheet '${sheetName}' exists but has no sheetId.`);
       }
       return existingSheet.properties.sheetId;
     }
@@ -95,19 +113,21 @@ export class GoogleSheetsClient {
       }
     });
 
-    return result.data.replies?.[0]?.addSheet?.properties?.sheetId;
+    const newSheetId = result.data.replies?.[0]?.addSheet?.properties?.sheetId;
+    if (newSheetId === undefined || newSheetId === null) {
+      throw new Error(`Failed to create sheet '${sheetName}'.`);
+    }
+    return newSheetId;
   }
 
-  async clearSheet(sheetName, sheetId) {
+  private async clearSheet(sheetName: string, sheetId: number): Promise<void> {
     const sheets = await this.getSheetsApi();
 
-    // Clear all cell content (values, formatting, notes, etc.) and sheet state
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
       requestBody: {
         requests: [
           {
-            // fields: "*" clears every cell field: values, formatting, notes, data validation, etc.
             repeatCell: {
               range: {
                 sheetId,
@@ -139,21 +159,26 @@ export class GoogleSheetsClient {
     logger.info(`Cleared sheet: ${sheetName}`);
   }
 
-  async writeSheet(sheetName, headers, rows, columnFormats = [], errors = []) {
+  async writeSheet(
+    sheetName: string,
+    headers: string[],
+    rows: CellValue[][],
+    columnFormats: ColumnFormat[] = [],
+    errors: string[] = []
+  ): Promise<void> {
     if (!Array.isArray(headers) || headers.length === 0) {
       throw new Error("GoogleSheetsClient.writeSheet requires a non-empty headers array.");
     }
 
     const sheetId = await this.ensureSheet(sheetName);
     await this.clearSheet(sheetName, sheetId);
+
     const sheets = await this.getSheetsApi();
     const values = [headers, ...rows];
-    const range = `${sheetName}!A1`;
 
-    // Write values
     const valueResponse = await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
-      range,
+      range: `${sheetName}!A1`,
       valueInputOption: "RAW",
       requestBody: { values }
     });
@@ -167,35 +192,35 @@ export class GoogleSheetsClient {
       totalUpdatedCells: valueResponse.data.updatedCells
     });
 
-    // Write errors at the bottom of the sheet as in previous version
-    const errorStartRow = rows.length + 4; // DATA_START_ROW + total rows + 2 context rows
-    const logText = Array.isArray(errors) && errors.length > 0 ? errors.join("\n") : "No errors or warnings.";
-    
+    const errorStartRow = rows.length + 4;
+    const logText = errors.length > 0 ? errors.join("\n") : "No errors or warnings.";
+
     await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
       range: `${sheetName}!A${errorStartRow}`,
       valueInputOption: "RAW",
       requestBody: {
-        values: [["Errors & Warnings:\n" + logText]]
+        values: [[`Errors & Warnings:\n${logText}`]]
       }
     });
 
-    // Format the error block to be bold/red/gray via format requests (or optionally just leave formatting as is)
-    // Note: To get precise styling for errors, we can add a text format request in applyFormatting or handle it here,
-    // but the simplest and most robust way that mimics the original and avoids merge conflicts is applying formatting.
-
-    // Apply formatting
-    await this.applyFormatting(sheetId, headers, rows, columnFormats, errorStartRow, Array.isArray(errors) && errors.length > 0);
+    await this.applyFormatting(sheetId, headers, rows, columnFormats, errorStartRow, errors.length > 0);
   }
 
-  async applyFormatting(sheetId, headers, rows, columnFormats = [], errorStartRow = null, hasErrors = false) {
+  private async applyFormatting(
+    sheetId: number,
+    headers: string[],
+    rows: CellValue[][],
+    columnFormats: ColumnFormat[] = [],
+    errorStartRow: number | null = null,
+    hasErrors = false
+  ): Promise<void> {
     const sheets = await this.getSheetsApi();
-    const requests = [];
+    const requests: sheets_v4.Schema$Request[] = [];
     const numColumns = headers.length;
-    const numRows = Array.isArray(rows) ? rows.length : 0;
-    const totalRows = numRows + 1; // +1 for header
+    const numRows = rows.length;
+    const totalRows = numRows + 1;
 
-    // 1. Bold headers
     requests.push({
       repeatCell: {
         range: {
@@ -214,11 +239,9 @@ export class GoogleSheetsClient {
       }
     });
 
-    // 2. Apply number formats per column
     for (let col = 0; col < numColumns; col++) {
       const format = columnFormats[col] || "string";
       const numberFormat = this.getNumberFormat(format);
-
       if (numberFormat) {
         requests.push({
           repeatCell: {
@@ -238,7 +261,6 @@ export class GoogleSheetsClient {
       }
     }
 
-    // 4. Freeze first row and first column
     requests.push({
       updateSheetProperties: {
         properties: {
@@ -252,12 +274,9 @@ export class GoogleSheetsClient {
       }
     });
 
-    // 5. Add alternating row colors (banding)
     requests.push({
       addBanding: {
         bandedRange: {
-          // Assign a stable bandedRangeId (use sheetId) so repeated runs update
-          // the existing banding instead of creating duplicates.
           bandedRangeId: sheetId,
           range: {
             sheetId,
@@ -275,7 +294,6 @@ export class GoogleSheetsClient {
       }
     });
 
-    // 6. Resize columns using the current data, capped to keep wide columns readable.
     const columnSizing = this.calculateColumnSizing(headers, rows, columnFormats);
     columnSizing.forEach(({ index, pixelSize }) => {
       requests.push({
@@ -286,44 +304,32 @@ export class GoogleSheetsClient {
             startIndex: index,
             endIndex: index + 1
           },
-          properties: {
-            pixelSize
-          },
+          properties: { pixelSize },
           fields: "pixelSize"
         }
       });
     });
 
     const wrapColumns = columnSizing.filter(column => column.wrap).map(column => column.index);
-
-    if (wrapColumns.length > 0) {
-      wrapColumns.forEach(col => {
-        requests.push({
-          repeatCell: {
-            range: {
-              sheetId,
-              startRowIndex: 1,
-              endRowIndex: totalRows,
-              startColumnIndex: col,
-              endColumnIndex: col + 1
-            },
-            cell: {
-              userEnteredFormat: { wrapStrategy: "WRAP" }
-            },
-            fields: "userEnteredFormat.wrapStrategy"
-          }
-        });
+    for (const col of wrapColumns) {
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 1,
+            endRowIndex: totalRows,
+            startColumnIndex: col,
+            endColumnIndex: col + 1
+          },
+          cell: {
+            userEnteredFormat: { wrapStrategy: "WRAP" }
+          },
+          fields: "userEnteredFormat.wrapStrategy"
+        }
       });
     }
 
-    // Clear existing filter before setting a new one (prevents crashes on re-runs)
-    requests.push({
-      clearBasicFilter: {
-        sheetId: sheetId
-      }
-    });
-
-    // 7. Create filter
+    requests.push({ clearBasicFilter: { sheetId } });
     requests.push({
       setBasicFilter: {
         filter: {
@@ -338,7 +344,6 @@ export class GoogleSheetsClient {
       }
     });
 
-    // 8. Error log block formatting (if errorStartRow is provided)
     if (errorStartRow !== null) {
       requests.push({
         repeatCell: {
@@ -347,7 +352,7 @@ export class GoogleSheetsClient {
             startRowIndex: errorStartRow - 1,
             endRowIndex: errorStartRow,
             startColumnIndex: 0,
-            endColumnIndex: 10 // wrap/format first 10 columns for the error block safely
+            endColumnIndex: 10
           },
           cell: {
             userEnteredFormat: {
@@ -362,7 +367,6 @@ export class GoogleSheetsClient {
       });
     }
 
-    // Execute all formatting requests
     if (requests.length > 0) {
       const formatResponse = await sheets.spreadsheets.batchUpdate({
         spreadsheetId: this.spreadsheetId,
@@ -375,11 +379,10 @@ export class GoogleSheetsClient {
     }
   }
 
-  getNumberFormat(format) {
-    const formats = {
+  private getNumberFormat(format: ColumnFormat): sheets_v4.Schema$NumberFormat | null {
+    const formats: Record<ColumnFormat, sheets_v4.Schema$NumberFormat | null> = {
       currency: { type: "CURRENCY", pattern: "$#,##0.00" },
       percent: { type: "PERCENT", pattern: "0.00%" },
-      // Custom large currencies fall under standard NUMBER types
       large_currency: { type: "NUMBER", pattern: '[>=1000000000000]0.00,,,"T";[>=1000000000]0.00,,"B";0.00,,"M"' },
       number: { type: "NUMBER", pattern: "0.00" },
       string: null
@@ -388,15 +391,15 @@ export class GoogleSheetsClient {
     return formats[format] || null;
   }
 
-  calculateColumnSizing(headers, rows, columnFormats = []) {
+  private calculateColumnSizing(headers: string[], rows: CellValue[][], columnFormats: ColumnFormat[] = []) {
     const minWidth = 80;
     const maxWidth = 300;
     const padding = 15;
 
     return headers.map((header, index) => {
       const format = columnFormats[index] || "string";
-      const values = [header, ...(Array.isArray(rows) ? rows.map(row => row?.[index]) : [])];
-      const longestDisplayLength = values.reduce((longest, value) => {
+      const values = [header, ...rows.map(row => row?.[index])];
+      const longestDisplayLength = values.reduce<number>((longest, value) => {
         const displayValue = this.getDisplayValue(value, format);
         return Math.max(longest, this.estimateTextWidth(displayValue));
       }, 0);
@@ -405,15 +408,11 @@ export class GoogleSheetsClient {
       const pixelSize = Math.max(minWidth, Math.min(maxWidth, estimatedWidth));
       const wrap = format === "string" && estimatedWidth > maxWidth;
 
-      return {
-        index,
-        pixelSize,
-        wrap
-      };
+      return { index, pixelSize, wrap };
     });
   }
 
-  getDisplayValue(value, format) {
+  private getDisplayValue(value: CellValue | undefined, format: ColumnFormat): string {
     if (value === null || value === undefined) {
       return "";
     }
@@ -439,21 +438,16 @@ export class GoogleSheetsClient {
           }).format(value);
         case "large_currency": {
           const absoluteValue = Math.abs(value);
-          if (absoluteValue >= 1_000_000_000_000) {
-            return `${(value / 1_000_000_000_000).toFixed(2)}T`;
-          }
-          if (absoluteValue >= 1_000_000_000) {
-            return `${(value / 1_000_000_000).toFixed(2)}B`;
-          }
-          if (absoluteValue >= 1_000_000) {
-            return `${(value / 1_000_000).toFixed(2)}M`;
-          }
+          if (absoluteValue >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+          if (absoluteValue >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+          if (absoluteValue >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
           return new Intl.NumberFormat("en-US", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
           }).format(value);
         }
         case "number":
+        case "string":
         default:
           return new Intl.NumberFormat("en-US", {
             minimumFractionDigits: 2,
@@ -462,26 +456,16 @@ export class GoogleSheetsClient {
       }
     }
 
-    if (value instanceof Date) {
-      return value.toLocaleString("en-US");
-    }
-
     return String(value);
   }
 
-  estimateTextWidth(value) {
-    if (!value) {
-      return 0;
-    }
-
-    const lineWidths = String(value)
-      .split(/\r?\n/)
-      .map(line => this.estimateSingleLineWidth(line));
-
+  private estimateTextWidth(value: string): number {
+    if (!value) return 0;
+    const lineWidths = String(value).split(/\r?\n/).map(line => this.estimateSingleLineWidth(line));
     return lineWidths.length > 0 ? Math.max(...lineWidths) : 0;
   }
 
-  estimateSingleLineWidth(line) {
+  private estimateSingleLineWidth(line: string): number {
     let width = 0;
 
     for (const character of line) {
@@ -493,8 +477,6 @@ export class GoogleSheetsClient {
         width += 6;
       } else if ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789$%&@#".includes(character)) {
         width += 8;
-      } else if (character >= "ა" && character <= "ჿ") {
-        width += 10;
       } else {
         width += 7;
       }

@@ -1,10 +1,10 @@
-import { inspect } from "util";
+import { inspect } from "node:util";
 
 const SECRET_QUERY_PATTERN = /([?&](?:api[_-]?key|token|secret|password|access[_-]?token)=)([^&\s]+)/gi;
 const SECRET_ASSIGNMENT_PATTERN = /((?:api[_-]?key|token|secret|password|access[_-]?token|authorization|cookie)[\s'"\-]*[:=]\s*)(["']?)([^"',\s]+)\2/gi;
 const SECRET_KEY_PATTERN = /\b(FMP_API_KEY|FMP_API_KEYS|ALPHA_VANTAGE_API_KEY|SPREADSHEET_ID)\b/gi;
 
-export function sanitizeSecrets(value) {
+export function sanitizeSecrets(value: unknown): unknown {
   if (value === undefined || value === null) return value;
 
   const text = typeof value === "string" ? value : inspect(value, { depth: 6, breakLength: Infinity });
@@ -15,7 +15,7 @@ export function sanitizeSecrets(value) {
     .replace(SECRET_KEY_PATTERN, "[REDACTED]");
 }
 
-function writeLog(level, message, args = []) {
+function writeLog(level: "log" | "warn" | "error" | "debug", message: string, args: unknown[] = []): void {
   const safeMessage = sanitizeSecrets(message);
   const safeArgs = args.map(arg => sanitizeSecrets(arg));
   const timestamp = new Date().toISOString();
@@ -30,16 +30,16 @@ function writeLog(level, message, args = []) {
 }
 
 export const logger = {
-  info(message, ...args) {
+  info(message: string, ...args: unknown[]): void {
     writeLog("log", message, args);
   },
-  warn(message, ...args) {
+  warn(message: string, ...args: unknown[]): void {
     writeLog("warn", message, args);
   },
-  error(message, ...args) {
+  error(message: string, ...args: unknown[]): void {
     writeLog("error", message, args);
   },
-  debug(message, ...args) {
+  debug(message: string, ...args: unknown[]): void {
     writeLog("debug", message, args);
   }
 };

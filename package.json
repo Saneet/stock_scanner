@@ -3,16 +3,22 @@
   "version": "0.1.0",
   "description": "Stock scanner runner for FinancialModelingPrep, scheduled hourly via GitHub Actions.",
   "type": "module",
-  "main": "src/index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "start": "node src/index.js",
-    "fetch": "node src/index.js"
+    "start": "tsx src/index.ts",
+    "fetch": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "googleapis": "^173.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
   },
   "keywords": [
     "stock",
