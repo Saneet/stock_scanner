@@ -14,6 +14,7 @@ export interface StockInputItem {
 
 export interface StockInputGroup {
   TARGET_SHEET_NAME: string;
+  DATA_PROVIDER: string;
   INPUT_DATA: StockInputItem[];
 }
 
@@ -85,7 +86,7 @@ export interface DashboardDataset {
 export type ColumnFormat = "string" | "number" | "percent" | "currency" | "large_currency";
 
 export interface ProviderRuntimeConfig {
-  apiKeys: string[];
+  apiKey: string;
 }
 
 export interface MarketDataProvider {

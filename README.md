@@ -2,11 +2,11 @@
 
 This repository runs a stock scanner in TypeScript and updates Google Sheets on each execution when configured.
 
-It uses a pluggable provider architecture so you can swap FinancialModelingPrep (FMP) for another market data API without changing the metric or sheet logic.
+It uses a pluggable provider architecture so you can swap Alpha Vantage, FinancialModelingPrep (FMP), or another market data API without changing the metric or sheet logic.
 
 ## Architecture Decisions
 
-- Runtime uses a single provider per execution (`DATA_PROVIDER`).
+- Each stock-group config in `src/constants.ts` can also set its own `DATA_PROVIDER`, and the runner will create one dashboard per config.
 - Providers can return optional provider-specific fields via `providerOptional` in `NormalizedTickerBatch`.
 - Metric formulas are based on a standardized input contract (`StandardizedMetricsInput`) and stay provider-agnostic.
 - If a provider lacks a direct endpoint (for example, price change windows), that provider should pre-calculate and map values to standardized fields.
@@ -15,6 +15,7 @@ It uses a pluggable provider architecture so you can swap FinancialModelingPrep 
 
 - `src/constants.ts` — configuration for API keys, provider selection, and stock lists.
 - `src/provider.ts` — provider factory.
+- `src/providers/alpha-vantage-provider.ts` — Alpha Vantage provider implementation.
 - `src/providers/fmp-provider.ts` — FinancialModelingPrep provider implementation.
 - `src/metrics.ts` — typed metric calculations and column definitions.
 - `src/dashboard.ts` — provider-agnostic fetch/process pipeline.
@@ -24,11 +25,8 @@ It uses a pluggable provider architecture so you can swap FinancialModelingPrep 
 ## Requirements
 
 - Node.js 18 or newer
-- `FMP_API_KEYS` environment variable containing one or more FinancialModelingPrep API keys
-
-Optional:
-
-- `DATA_PROVIDER` (default: `fmp`)
+- `ALPHA_VANTAGE_API_KEY` environment variable containing the Alpha Vantage API key
+- `FMP_API_KEY` environment variable containing the FinancialModelingPrep API key
 
 ## Local usage
 
@@ -41,8 +39,8 @@ npm install
 2. Set your API key(s):
 
 ```bash
-export FMP_API_KEYS="your_api_key_here"
-export DATA_PROVIDER="fmp"
+export ALPHA_VANTAGE_API_KEY="your_api_key_here"
+export FMP_API_KEY="your_api_key_here"
 ```
 
 3. Run the scanner:
@@ -56,18 +54,18 @@ npm run typecheck
 
 4. If Google Sheets is configured, results are written directly to the target sheet(s).
 
+To route different sheets through different providers, set `DATA_PROVIDER` on each config object in `src/constants.ts` and add it to `DASHBOARD_CONFIGS`.
+
 ## GitHub Actions
 
 The workflow `.github/workflows/stock-scanner-hourly.yml` is configured to run every hour.
 
 ### Required secret
 
-- `FMP_API_KEYS`
-- `DATA_PROVIDER` (optional, defaults to `fmp`)
+- `ALPHA_VANTAGE_API_KEY`
+- `FMP_API_KEY`
 
 Set this in your repository settings under `Settings > Secrets and variables > Actions`.
-
-If you need to support multiple keys, separate them with commas.
 
 ## Notes
 

@@ -164,7 +164,8 @@ export class GoogleSheetsClient {
     headers: string[],
     rows: CellValue[][],
     columnFormats: ColumnFormat[] = [],
-    errors: string[] = []
+    errors: string[] = [],
+    notes: string[][] = []
   ): Promise<void> {
     if (!Array.isArray(headers) || headers.length === 0) {
       throw new Error("GoogleSheetsClient.writeSheet requires a non-empty headers array.");
@@ -204,7 +205,7 @@ export class GoogleSheetsClient {
       }
     });
 
-    await this.applyFormatting(sheetId, headers, rows, columnFormats, errorStartRow, errors.length > 0);
+    await this.applyFormatting(sheetId, headers, rows, columnFormats, errorStartRow, errors.length > 0, notes);
   }
 
   private async applyFormatting(
@@ -213,7 +214,8 @@ export class GoogleSheetsClient {
     rows: CellValue[][],
     columnFormats: ColumnFormat[] = [],
     errorStartRow: number | null = null,
-    hasErrors = false
+    hasErrors = false,
+    notes: string[][] = []
   ): Promise<void> {
     const sheets = await this.getSheetsApi();
     const requests: sheets_v4.Schema$Request[] = [];
@@ -343,6 +345,19 @@ export class GoogleSheetsClient {
         }
       }
     });
+
+    if (notes.length > 0) {
+      const noteRows: sheets_v4.Schema$RowData[] = notes.map(noteRow => ({
+        values: noteRow.map(note => ({ note: note || "" }))
+      }));
+      requests.push({
+        updateCells: {
+          rows: noteRows,
+          fields: "note",
+          start: { sheetId, rowIndex: 1, columnIndex: 0 }
+        }
+      });
+    }
 
     if (errorStartRow !== null) {
       requests.push({

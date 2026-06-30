@@ -1,3 +1,4 @@
+import { PROVIDER_IDS } from "./provider";
 import { StockInputGroup } from "./types";
 
 const getEnvValue = (key: string, fallback = ""): string => {
@@ -5,29 +6,26 @@ const getEnvValue = (key: string, fallback = ""): string => {
   return value && String(value).trim() ? String(value).trim() : fallback;
 };
 
-const parseEnvList = (key: string, fallback: string[] = []): string[] => {
-  const raw = getEnvValue(key);
-  if (!raw) return fallback;
-  return raw.split(",").map(value => value.trim()).filter(Boolean);
-};
-
 export const CONSTANTS = {
-  FMP_API_KEYS: parseEnvList("FMP_API_KEYS", parseEnvList("FMP_API_KEY", ["YOUR_FMP_API_KEY"])),
-  SPREADSHEET_ID: getEnvValue("SPREADSHEET_ID", "YOUR_SPREADSHEET_ID"),
+  FMP_API_KEY: getEnvValue("FMP_API_KEY", "YOUR_FMP_API_KEY"),
   ALPHA_VANTAGE_API_KEY: getEnvValue("ALPHA_VANTAGE_API_KEY", "YOUR_ALPHA_VANTAGE_API_KEY"),
-  DATA_PROVIDER: getEnvValue("DATA_PROVIDER", "fmp")
+  SPREADSHEET_ID: getEnvValue("SPREADSHEET_ID", "YOUR_SPREADSHEET_ID")
 };
 
 export const STOCKS_AI: StockInputGroup = {
-  TARGET_SHEET_NAME: "FIN_DASHBOARD_AI",
-  INPUT_DATA: [
-    { symbol: "CRWV", industry: "AI Cloud" }
-  ]
-};
-
-export const STOCKS_OTHER: StockInputGroup = {
-  TARGET_SHEET_NAME: "FIN_DASHBOARD_OTHER",
+  TARGET_SHEET_NAME: "FIN_DASHBOARD_AV",
+  DATA_PROVIDER: PROVIDER_IDS.ALPHA_VANTAGE,
   INPUT_DATA: [
     { symbol: "AVAV", industry: "Defense" }
   ]
 };
+
+export const STOCKS_OTHER: StockInputGroup = {
+  TARGET_SHEET_NAME: "FIN_DASHBOARD_FMP",
+  DATA_PROVIDER: PROVIDER_IDS.FMP,
+  INPUT_DATA: [
+    { symbol: "AVAV", industry: "Defense" }
+  ]
+};
+
+export const DASHBOARD_CONFIGS: StockInputGroup[] = [STOCKS_AI, STOCKS_OTHER];

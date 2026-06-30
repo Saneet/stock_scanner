@@ -1,26 +1,46 @@
-import { CONSTANTS, STOCKS_AI, STOCKS_OTHER } from "./constants";
+import { CONSTANTS, DASHBOARD_CONFIGS } from "./constants";
 import { DashboardProcessor } from "./dashboard";
 import { COLUMN_CONFIG } from "./metrics";
-import { createProvider } from "./provider";
+import { PROVIDER_IDS, createProvider } from "./provider";
 import { logger } from "./logger";
 import { GoogleSheetsClient } from "./sheets";
 import { StockInputGroup } from "./types";
 
-const apiKeys = [process.env.FMP_API_KEYS, process.env.FMP_API_KEY]
-  .flatMap(value => (value ? String(value).split(",") : []))
-  .map(key => key.trim())
-  .filter(Boolean);
-
-const resolvedApiKeys = apiKeys.length > 0 ? apiKeys : CONSTANTS.FMP_API_KEYS.filter(Boolean);
-
-if (CONSTANTS.DATA_PROVIDER.toLowerCase() === "fmp") {
-  if (!resolvedApiKeys.length || resolvedApiKeys[0] === "YOUR_FMP_API_KEY") {
-    logger.error("Missing FinancialModelingPrep API keys. Set FMP_API_KEY or FMP_API_KEYS in environment or update src/constants.ts.");
-    process.exit(1);
+function resolveApiKey(providerId: string): string {
+  switch (providerId.toLowerCase()) {
+    case PROVIDER_IDS.FMP:
+      return process.env.FMP_API_KEY?.trim() || CONSTANTS.FMP_API_KEY;
+    case PROVIDER_IDS.ALPHA_VANTAGE:
+    case "alphavantage":
+    case "alpha_vantage":
+      return process.env.ALPHA_VANTAGE_API_KEY?.trim() || CONSTANTS.ALPHA_VANTAGE_API_KEY;
+    default:
+      return "";
   }
 }
 
 const sheetClient = createSheetsClient();
+
+function resolveProviderId(input: StockInputGroup): string {
+  return input.DATA_PROVIDER;
+}
+
+function requireApiKey(providerId: string): string {
+  const apiKey = resolveApiKey(providerId);
+
+  if (!apiKey || apiKey.startsWith("YOUR_")) {
+    if (providerId.toLowerCase() === PROVIDER_IDS.FMP) {
+      logger.error("Missing FinancialModelingPrep API key. Set FMP_API_KEY in environment or update src/constants.ts.");
+    } else if (providerId.toLowerCase() === PROVIDER_IDS.ALPHA_VANTAGE || providerId.toLowerCase() === "alphavantage" || providerId.toLowerCase() === "alpha_vantage") {
+      logger.error("Missing Alpha Vantage API key. Set ALPHA_VANTAGE_API_KEY in environment or update src/constants.ts.");
+    } else {
+      logger.error(`Missing API key for provider '${providerId}'.`);
+    }
+    process.exit(1);
+  }
+
+  return apiKey;
+}
 
 function createSheetsClient(): GoogleSheetsClient | null {
   const spreadsheetId = process.env.SPREADSHEET_ID || CONSTANTS.SPREADSHEET_ID;
@@ -50,7 +70,9 @@ function createSheetsClient(): GoogleSheetsClient | null {
 }
 
 async function runDashboard(input: StockInputGroup): Promise<void> {
-  const provider = createProvider(CONSTANTS.DATA_PROVIDER, { apiKeys: resolvedApiKeys });
+  const providerId = resolveProviderId(input);
+  const apiKey = requireApiKey(providerId);
+  const provider = createProvider(providerId, { apiKey });
   const processor = new DashboardProcessor(provider);
 
   logger.info(`Generating dashboard: ${input.TARGET_SHEET_NAME} (provider=${provider.id})`);
@@ -68,15 +90,17 @@ async function runDashboard(input: StockInputGroup): Promise<void> {
     COLUMN_CONFIG.map(col => col.header),
     result.rows,
     COLUMN_CONFIG.map(col => col.format),
-    result.errors
+    result.errors,
+    result.notes
   );
   logger.info(`Wrote spreadsheet sheet: ${input.TARGET_SHEET_NAME}`);
 }
 
 async function main(): Promise<void> {
   try {
-    // await runDashboard(STOCKS_AI);
-    await runDashboard(STOCKS_OTHER);
+    for (const group of DASHBOARD_CONFIGS) {
+      await runDashboard(group);
+    }
     logger.info("Stock scanner finished successfully.");
   } catch (error) {
     logger.error("Stock scanner failed:", error);

@@ -4,22 +4,19 @@ import { MarketDataProvider, NormalizedTickerBatch } from "../types";
 export class FmpProvider implements MarketDataProvider {
   readonly id = "fmp";
 
-  private readonly apiKeys: string[];
-  private keyIndex = 0;
+  private readonly apiKey: string;
   private lastRequestTime = 0;
   private readonly baseUrl = "https://financialmodelingprep.com/stable";
 
-  constructor(apiKeys: string[]) {
-    if (!Array.isArray(apiKeys) || apiKeys.length === 0) {
-      throw new Error("FMP provider requires at least one API key.");
+  constructor(apiKey: string) {
+    if (!apiKey) {
+      throw new Error("FMP provider requires an API key.");
     }
-    this.apiKeys = apiKeys;
+    this.apiKey = apiKey;
   }
 
   private getApiKey(): string {
-    const key = this.apiKeys[this.keyIndex];
-    this.keyIndex = (this.keyIndex + 1) % this.apiKeys.length;
-    return key;
+    return this.apiKey;
   }
 
   private async delay(ms: number): Promise<void> {
@@ -29,7 +26,7 @@ export class FmpProvider implements MarketDataProvider {
   private async enforceRateLimit(): Promise<void> {
     const now = Date.now();
     const timePassed = now - this.lastRequestTime;
-    const requiredDelay = 1200;
+    const requiredDelay = 200; // 300 calls/min → 60,000 / 300 = 200ms
     if (timePassed < requiredDelay) {
       await this.delay(requiredDelay - timePassed);
     }
@@ -44,7 +41,7 @@ export class FmpProvider implements MarketDataProvider {
     const text = await response.text();
     logger.debug(`Received HTTP ${response.status} for ${url}`);
 
-    const isRateLimited = response.status === 429 || text.includes("Limit Reach") || text.includes("Error Message") || text.includes("Not Found");
+    const isRateLimited = response.status === 429 || text.includes("Limit Reach");
     if (isRateLimited && retries > 0) {
       logger.warn(`API rate limit or error response detected for ${url}. Retrying after delay.`);
       await this.delay(2000);

@@ -2,7 +2,7 @@ import { inspect } from "node:util";
 
 const SECRET_QUERY_PATTERN = /([?&](?:api[_-]?key|token|secret|password|access[_-]?token)=)([^&\s]+)/gi;
 const SECRET_ASSIGNMENT_PATTERN = /((?:api[_-]?key|token|secret|password|access[_-]?token|authorization|cookie)[\s'"\-]*[:=]\s*)(["']?)([^"',\s]+)\2/gi;
-const SECRET_KEY_PATTERN = /\b(FMP_API_KEY|FMP_API_KEYS|ALPHA_VANTAGE_API_KEY|SPREADSHEET_ID)\b/gi;
+const SECRET_KEY_PATTERN = /\b(FMP_API_KEY|ALPHA_VANTAGE_API_KEY|SPREADSHEET_ID)\b/gi;
 
 export function sanitizeSecrets(value: unknown): unknown {
   if (value === undefined || value === null) return value;
