@@ -2,7 +2,8 @@ name: Stock Scanner Hourly
 
 on:
   schedule:
-    - cron: '0 16,18,20,22,0,2,4,6 * * 1-5'
+    - cron: '0 15 * * 1-5'
+    - cron: '0 23 * * 1-5'
   workflow_dispatch:
     inputs:
       dashboard_config_name:
@@ -12,13 +13,14 @@ on:
         options:
           - STOCKS_AV
           - STOCKS_FMP
+          - STOCKS_TIINGO
 
 jobs:
   run-stock-scanner:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dashboard_config_name: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.dashboard_config_name)) || fromJSON('["STOCKS_AV", "STOCKS_FMP"]') }}
+        dashboard_config_name: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.dashboard_config_name)) || fromJSON('["STOCKS_AV", "STOCKS_FMP", "STOCKS_TIINGO"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -35,6 +37,7 @@ jobs:
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           DASHBOARD_CONFIG_NAME: ${{ matrix.dashboard_config_name }}

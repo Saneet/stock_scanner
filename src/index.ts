@@ -14,6 +14,8 @@ function resolveApiKey(providerId: string): string {
     case "alphavantage":
     case "alpha_vantage":
       return process.env.ALPHA_VANTAGE_API_KEY?.trim() || CONSTANTS.ALPHA_VANTAGE_API_KEY;
+    case PROVIDER_IDS.TIINGO:
+      return process.env.TIINGO_API_KEY?.trim() || CONSTANTS.TIINGO_API_KEY;
     default:
       return "";
   }
@@ -52,6 +54,8 @@ function requireApiKey(providerId: string): string {
       logger.error("Missing FinancialModelingPrep API key. Set FMP_API_KEY in environment or update src/constants.ts.");
     } else if (providerId.toLowerCase() === PROVIDER_IDS.ALPHA_VANTAGE || providerId.toLowerCase() === "alphavantage" || providerId.toLowerCase() === "alpha_vantage") {
       logger.error("Missing Alpha Vantage API key. Set ALPHA_VANTAGE_API_KEY in environment or update src/constants.ts.");
+    } else if (providerId.toLowerCase() === PROVIDER_IDS.TIINGO) {
+      logger.error("Missing Tiingo API key. Set TIINGO_API_KEY in environment or update src/constants.ts.");
     } else {
       logger.error(`Missing API key for provider '${providerId}'.`);
     }
@@ -110,7 +114,8 @@ async function runDashboard(input: StockInputGroup): Promise<void> {
     result.rows,
     COLUMN_CONFIG.map(col => col.format),
     result.errors,
-    result.notes
+    result.notes,
+    { providerId: provider.id }
   );
   logger.info(`Wrote spreadsheet sheet: ${input.TARGET_SHEET_NAME}`);
 }

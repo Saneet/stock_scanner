@@ -12,6 +12,10 @@ interface GoogleSheetsClientConfig {
   serviceAccountCredentialsPath?: string;
 }
 
+interface WriteSheetOptions {
+  providerId?: string;
+}
+
 export class GoogleSheetsClient {
   private readonly spreadsheetId: string;
   private readonly serviceAccountKey?: string | Record<string, unknown>;
@@ -165,7 +169,8 @@ export class GoogleSheetsClient {
     rows: CellValue[][],
     columnFormats: ColumnFormat[] = [],
     errors: string[] = [],
-    notes: string[][] = []
+    notes: string[][] = [],
+    options: WriteSheetOptions = {}
   ): Promise<void> {
     if (!Array.isArray(headers) || headers.length === 0) {
       throw new Error("GoogleSheetsClient.writeSheet requires a non-empty headers array.");
@@ -183,6 +188,26 @@ export class GoogleSheetsClient {
       valueInputOption: "RAW",
       requestBody: { values }
     });
+
+    if (this.shouldUseGoogleFinance(options.providerId)) {
+      const priceColumnIndex = headers.indexOf("Price");
+      const pctChangeColumnIndex = headers.indexOf("% Change");
+
+      if (priceColumnIndex >= 0) {
+        await this.writeGoogleFinanceColumn(sheetName, priceColumnIndex, rows.length, rowNumber => this.buildGoogleFinancePriceFormula(rowNumber));
+        this.updateFormulaNotes(notes, priceColumnIndex, "GoogleFinance formula: current price is fetched in the sheet.");
+      }
+
+      if (pctChangeColumnIndex >= 0) {
+        await this.writeGoogleFinanceColumn(
+          sheetName,
+          pctChangeColumnIndex,
+          rows.length,
+          rowNumber => this.buildGoogleFinancePriceChangeFormula(rowNumber)
+        );
+        this.updateFormulaNotes(notes, pctChangeColumnIndex, "GoogleFinance formula: 1W, 1M, 3M, and 1Y price change are calculated in the sheet.");
+      }
+    }
 
     logger.info("Google Sheets update response:", {
       status: valueResponse.status,
@@ -206,6 +231,67 @@ export class GoogleSheetsClient {
     });
 
     await this.applyFormatting(sheetId, headers, rows, columnFormats, errorStartRow, errors.length > 0, notes);
+  }
+
+  private shouldUseGoogleFinance(providerId?: string): boolean {
+    if (!providerId) return false;
+    const normalized = providerId.toLowerCase();
+    return normalized === "alpha-vantage" || normalized === "tiingo";
+  }
+
+  private updateFormulaNotes(notes: string[][], columnIndex: number, noteText: string): void {
+    for (const noteRow of notes) {
+      if (!Array.isArray(noteRow) || noteRow.length <= columnIndex) continue;
+      noteRow[columnIndex] = noteText;
+    }
+  }
+
+  private async writeGoogleFinanceColumn(
+    sheetName: string,
+    columnIndex: number,
+    rowCount: number,
+    buildFormula: (rowNumber: number) => string
+  ): Promise<void> {
+    if (rowCount === 0) return;
+
+    const sheets = await this.getSheetsApi();
+    const columnLetter = this.toColumnLetter(columnIndex);
+    const values = Array.from({ length: rowCount }, (_, index) => [buildFormula(index + 2)]);
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!${columnLetter}2:${columnLetter}${rowCount + 1}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values }
+    });
+  }
+
+  private buildGoogleFinancePriceFormula(rowNumber: number): string {
+    return `=IF(ISBLANK($A${rowNumber}), "", GOOGLEFINANCE($A${rowNumber}, "price"))`;
+  }
+
+  private buildGoogleFinancePriceChangeFormula(rowNumber: number): string {
+    return [
+      `=IF(ISBLANK($A${rowNumber}), "",`,
+      `  "1W: " & TEXT((GOOGLEFINANCE($A${rowNumber}, "price") - INDEX(GOOGLEFINANCE($A${rowNumber}, "price", TODAY()-7), 2, 2)) / INDEX(GOOGLEFINANCE($A${rowNumber}, "price", TODAY()-7), 2, 2), "0.00%") & CHAR(10) &`,
+      `  "1M: " & TEXT((GOOGLEFINANCE($A${rowNumber}, "price") - INDEX(GOOGLEFINANCE($A${rowNumber}, "price", EDATE(TODAY(),-1)), 2, 2)) / INDEX(GOOGLEFINANCE($A${rowNumber}, "price", EDATE(TODAY(),-1)), 2, 2), "0.00%") & CHAR(10) &`,
+      `  "3M: " & TEXT((GOOGLEFINANCE($A${rowNumber}, "price") - INDEX(GOOGLEFINANCE($A${rowNumber}, "price", EDATE(TODAY(),-3)), 2, 2)) / INDEX(GOOGLEFINANCE($A${rowNumber}, "price", EDATE(TODAY(),-3)), 2, 2), "0.00%") & CHAR(10) &`,
+      `  "1Y: " & TEXT((GOOGLEFINANCE($A${rowNumber}, "price") - INDEX(GOOGLEFINANCE($A${rowNumber}, "price", EDATE(TODAY(),-12)), 2, 2)) / INDEX(GOOGLEFINANCE($A${rowNumber}, "price", EDATE(TODAY(),-12)), 2, 2), "0.00%")`,
+      `)`
+    ].join("");
+  }
+
+  private toColumnLetter(columnIndex: number): string {
+    let index = columnIndex + 1;
+    let columnLetter = "";
+
+    while (index > 0) {
+      const remainder = (index - 1) % 26;
+      columnLetter = String.fromCharCode(65 + remainder) + columnLetter;
+      index = Math.floor((index - 1) / 26);
+    }
+
+    return columnLetter;
   }
 
   private async applyFormatting(
@@ -398,7 +484,7 @@ export class GoogleSheetsClient {
     const formats: Record<ColumnFormat, sheets_v4.Schema$NumberFormat | null> = {
       currency: { type: "CURRENCY", pattern: "$#,##0.00" },
       percent: { type: "PERCENT", pattern: "0.00%" },
-      large_currency: { type: "NUMBER", pattern: '[>=1000000000000]0.00,,,"T";[>=1000000000]0.00,,"B";0.00,,"M"' },
+      large_currency: { type: "NUMBER", pattern: '[>=1000000000000]0.00,,,,"T";[>=1000000000]0.00,,,"B";0.00,,"M"' },
       number: { type: "NUMBER", pattern: "0.00" },
       string: null
     };

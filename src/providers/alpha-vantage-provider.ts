@@ -1,12 +1,7 @@
 import { logger } from "../logger";
-import { CashFlowRecord, IncomeStatementRecord, MarketDataProvider, NormalizedTickerBatch, ProviderPriceChange, ProviderProfile, ProviderRatios } from "../types";
+import { CashFlowRecord, IncomeStatementRecord, MarketDataProvider, NormalizedTickerBatch, ProviderProfile, ProviderRatios } from "../types";
 
 type AlphaVantageRecord = Record<string, unknown>;
-
-interface DailyPriceEntry {
-  date: string;
-  close: number;
-}
 
 export class AlphaVantageProvider implements MarketDataProvider {
   readonly id = "alpha-vantage";
@@ -142,41 +137,6 @@ export class AlphaVantageProvider implements MarketDataProvider {
     };
   }
 
-  private toDailyPriceEntries(seriesValue: unknown): DailyPriceEntry[] {
-    if (!seriesValue || typeof seriesValue !== "object" || Array.isArray(seriesValue)) return [];
-
-    const series = seriesValue as AlphaVantageRecord;
-    return Object.keys(series)
-      .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())
-      .map(date => {
-        const dayRecord = this.toRecord(series[date]);
-        const close = this.getNumber(dayRecord, "4. close") ?? this.getNumber(dayRecord, "5. adjusted close") ?? undefined;
-        return close && close > 0 ? { date, close } : null;
-      })
-      .filter((entry): entry is DailyPriceEntry => entry !== null)
-      .slice(0, 260);
-  }
-
-  private buildPriceChange(entries: DailyPriceEntry[], currentPrice: number): ProviderPriceChange | null {
-    if (entries.length === 0 || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
-
-    const windows: Array<[keyof ProviderPriceChange, number]> = [
-      ["5D", 5],
-      ["1M", 21],
-      ["3M", 63],
-      ["1Y", 252]
-    ];
-
-    const priceChange: ProviderPriceChange = {};
-    for (const [key, index] of windows) {
-      const priorEntry = entries[index];
-      if (!priorEntry || !Number.isFinite(priorEntry.close) || priorEntry.close <= 0) continue;
-      priceChange[key] = ((currentPrice - priorEntry.close) / priorEntry.close) * 100;
-    }
-
-    return Object.keys(priceChange).length > 0 ? priceChange : null;
-  }
-
   async fetchTickerDataBatch(ticker: string): Promise<NormalizedTickerBatch> {
     const apiKey = this.getApiKey();
     const encodedTicker = encodeURIComponent(ticker);
@@ -184,22 +144,15 @@ export class AlphaVantageProvider implements MarketDataProvider {
     const incomeRaw = await this.fetchJson(`${this.baseUrl}?function=INCOME_STATEMENT&symbol=${encodedTicker}&apikey=${apiKey}`);
     const cashFlowRaw = await this.fetchJson(`${this.baseUrl}?function=CASH_FLOW&symbol=${encodedTicker}&apikey=${apiKey}`);
     const overviewRaw = await this.fetchJson(`${this.baseUrl}?function=OVERVIEW&symbol=${encodedTicker}&apikey=${apiKey}`);
-    const quoteRaw = await this.fetchJson(`${this.baseUrl}?function=GLOBAL_QUOTE&symbol=${encodedTicker}&apikey=${apiKey}`);
-    const dailyRaw = await this.fetchJson(`${this.baseUrl}?function=TIME_SERIES_DAILY&symbol=${encodedTicker}&outputsize=full&apikey=${apiKey}`);
 
     const incomeRecord = this.toRecord(incomeRaw);
     const cashFlowRecord = this.toRecord(cashFlowRaw);
     const overviewRecord = this.toRecord(overviewRaw);
-    const quoteRecord = this.toRecord(quoteRaw);
-    const dailyRecord = this.toRecord(dailyRaw);
 
     const incomeAnnual = this.toObjectArray(incomeRecord?.annualReports).slice(0, 4).map(record => this.mapIncomeRecord(record));
     const incomeQuarterly = this.toObjectArray(incomeRecord?.quarterlyReports).slice(0, 10).map(record => this.mapIncomeRecord(record));
     const cashFlow = this.toObjectArray(cashFlowRecord?.annualReports).slice(0, 2).map(record => this.mapCashFlowRecord(record));
 
-    const dailyEntries = this.toDailyPriceEntries(dailyRecord?.["Time Series (Daily)"]);
-    const quotePrice = this.getNumber(this.toRecord(quoteRecord?.["Global Quote"]), "05. price");
-    const latestPrice = quotePrice ?? dailyEntries[0]?.close;
     const marketCap = this.getNumber(overviewRecord, "MarketCapitalization");
 
     const profile: ProviderProfile | null = overviewRecord
@@ -209,7 +162,6 @@ export class AlphaVantageProvider implements MarketDataProvider {
           country: this.getString(overviewRecord, "Country"),
           isAdr: this.getBoolean(overviewRecord, "IsADR") ?? this.getBoolean(overviewRecord, "isADR"),
           ipoDate: this.getString(overviewRecord, "IPODate") ?? this.getString(overviewRecord, "ipodate"),
-          price: latestPrice,
           marketCap
         }
       : null;
@@ -221,15 +173,13 @@ export class AlphaVantageProvider implements MarketDataProvider {
         }
       : null;
 
-    const priceChange = latestPrice ? this.buildPriceChange(dailyEntries, latestPrice) : null;
-
     return {
       incomeAnnual,
       incomeQuarterly,
       cashFlow,
       profile,
       ratios,
-      priceChange,
+      priceChange: null,
       providerOptional: {
         symbol: this.getString(overviewRecord, "Symbol"),
         exchange: this.getString(overviewRecord, "Exchange"),
