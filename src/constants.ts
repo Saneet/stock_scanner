@@ -66,7 +66,7 @@ export const STOCKS_AV: StockInputGroup = {
   { 'symbol': 'SNDK', 'industry': 'Mem' },
   { 'symbol': 'AAPL', 'industry': 'Tech' },
   { 'symbol': 'AMZN', 'industry': 'Tech' },
-  { 'symbol': 'GOOG', 'industry': 'Tech' },
+  { 'symbol': 'GOOGL', 'industry': 'Tech' },
   { 'symbol': 'META', 'industry': 'Tech' },
   { 'symbol': 'MSFT', 'industry': 'Tech' },
   { 'symbol': 'NVDA', 'industry': 'Tech' },
