@@ -1,11 +1,11 @@
 # Stock Scanner
 
-This repository runs a stock scanner using data from FinancialModelingPrep and writes JSON output on each execution.
+This repository runs a stock scanner using data from FinancialModelingPrep and updates Google Sheets on each execution when configured.
 
 ## Project structure
 
 - `src/constants.js` — configuration for API keys and stock lists.
-- `src/fmp.js` — FinancialModelingPrep API client, calculation logic, and JSON output writer.
+- `src/fmp.js` — FinancialModelingPrep API client and calculation logic.
 - `src/index.js` — main runner that executes the scanner for AI and other stock groups.
 - `.github/workflows/stock-scanner-hourly.yml` — GitHub Actions workflow scheduled to run hourly.
 
@@ -34,10 +34,7 @@ export FMP_API_KEYS="your_api_key_here"
 npm run fetch
 ```
 
-4. Output files will be written to the `data/` directory:
-
-- `data/dashboard-ai.json`
-- `data/dashboard-other.json`
+4. If Google Sheets is configured, results are written directly to the target sheet(s).
 
 ## GitHub Actions
 
@@ -53,7 +50,7 @@ If you need to support multiple keys, separate them with commas.
 
 ## Notes
 
-- The generated Node.js implementation writes output to JSON files and can also update Google Sheets when properly configured.
+- The runner does not persist local JSON files by default; it updates Google Sheets when properly configured.
 - To write to Google Sheets, set `SPREADSHEET_ID`, and use a Google service account with `GOOGLE_SERVICE_ACCOUNT_KEY` or `GOOGLE_APPLICATION_CREDENTIALS`.
 - Share the spreadsheet with the service account email, then set the secret `GOOGLE_SERVICE_ACCOUNT_KEY` in GitHub Actions.
 - Update `src/constants.js` to change the stock lists or target sheet names if needed.

@@ -27,11 +27,4 @@ jobs:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-          OUTPUT_DIR: data
         run: npm run fetch
-
-      - name: Upload JSON outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: stock-scanner-output
-          path: data

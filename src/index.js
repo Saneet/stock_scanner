@@ -18,7 +18,6 @@ if (!apiKeys.length || apiKeys[0] === "YOUR_FMP_API_KEY") {
   process.exit(1);
 }
 
-const OUTPUT_DIR = process.env.OUTPUT_DIR || "data";
 const sheetClient = createSheetsClient();
 
 function createSheetsClient() {
@@ -54,8 +53,8 @@ async function runDashboard(input, fileName) {
   const client = new FmpApiClient(apiKeys);
   const processor = new DashboardProcessor(client);
   logger.info(`Generating dashboard: ${input.TARGET_SHEET_NAME}`);
-  const result = await processor.generateDashboard(input, `${OUTPUT_DIR}/${fileName}`);
-  logger.info(`Wrote output to ${OUTPUT_DIR}/${fileName}`);
+  const result = await processor.generateDashboard(input, { writeJson: false });
+  logger.info(`Generated dashboard rows in memory for ${input.TARGET_SHEET_NAME}.`);
 
   if (sheetClient) {
     logger.info(`Writing ${result.rows.length} rows to spreadsheet sheet: ${input.TARGET_SHEET_NAME}`);
