@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logger } from "./logger";
 import { COLUMN_CONFIG, MetricsCalculator } from "./metrics";
+import { toApiTicker, toSheetTicker } from "./ticker";
 import { DashboardDataset, MarketDataProvider, RawTickerData, StockInputGroup } from "./types";
 
 export class DataFetcher {
@@ -14,9 +15,11 @@ export class DataFetcher {
     for (const input of inputList) {
       const ticker = input.symbol;
       if (!ticker) continue;
-      logger.info(`Fetching ticker data: ${ticker}`);
+      const apiTicker = toApiTicker(ticker);
+      const sheetTicker = toSheetTicker(ticker);
+      logger.info(`Fetching ticker data: ${ticker}${apiTicker !== ticker ? ` -> ${apiTicker}` : ""}`);
 
-      const batch = await this.provider.fetchTickerDataBatch(ticker);
+      const batch = await this.provider.fetchTickerDataBatch(apiTicker);
       if (batch.incomeAnnual.length === 0 && !batch.profile) {
         const message = `[${ticker}] No API data found or limit hit.`;
         errorLog.push(message);
@@ -24,7 +27,7 @@ export class DataFetcher {
       }
 
       dataset[ticker] = {
-        ticker: input.symbol,
+        ticker: sheetTicker,
         industry: input.industry,
         incomeAnnual: batch.incomeAnnual,
         incomeQuarterly: batch.incomeQuarterly,

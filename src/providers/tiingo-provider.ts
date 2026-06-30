@@ -13,7 +13,6 @@ export class TiingoProvider implements MarketDataProvider {
 
   private readonly apiKey: string;
   private readonly baseUrl: string;
-  private lastRequestTime = 0;
 
   constructor(apiKey: string, baseUrl = "https://api.tiingo.com") {
     if (!apiKey) {
@@ -21,20 +20,6 @@ export class TiingoProvider implements MarketDataProvider {
     }
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
-  }
-
-  private async delay(ms: number): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  private async enforceRateLimit(): Promise<void> {
-    const now = Date.now();
-    const timePassed = now - this.lastRequestTime;
-    const requiredDelay = 100;
-    if (timePassed < requiredDelay) {
-      await this.delay(requiredDelay - timePassed);
-    }
-    this.lastRequestTime = Date.now();
   }
 
   /**
@@ -75,20 +60,13 @@ export class TiingoProvider implements MarketDataProvider {
     });
   }
 
-  private async fetchCsv(url: string, retries = 3): Promise<Array<Record<string, string>>> {
+  private async fetchCsv(url: string): Promise<Array<Record<string, string>>> {
     const safeUrl = url.replace(/token=[^&]+/, "token=***");
     logger.debug(`Fetching Tiingo URL: ${safeUrl}`);
-    await this.enforceRateLimit();
 
     const response = await fetch(url);
     const text = await response.text();
     logger.debug(`Received HTTP ${response.status} for Tiingo URL: ${safeUrl}`);
-
-    if (response.status === 429 && retries > 0) {
-      logger.warn(`Tiingo rate limit hit. Retrying after delay.`);
-      await this.delay(2000);
-      return this.fetchCsv(url, retries - 1);
-    }
 
     if (!response.ok) {
       logger.error(`Tiingo API error ${response.status} for ${safeUrl}: ${text.slice(0, 200)}`);
