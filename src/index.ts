@@ -1,4 +1,4 @@
-import { CONSTANTS, DASHBOARD_CONFIGS } from "./constants";
+import { CONSTANTS, DASHBOARD_CONFIG_LOOKUP, DASHBOARD_CONFIGS } from "./constants";
 import { DashboardProcessor } from "./dashboard";
 import { COLUMN_CONFIG } from "./metrics";
 import { PROVIDER_IDS, createProvider } from "./provider";
@@ -23,6 +23,25 @@ const sheetClient = createSheetsClient();
 
 function resolveProviderId(input: StockInputGroup): string {
   return input.DATA_PROVIDER;
+}
+
+function resolveDashboardConfigs(): StockInputGroup[] {
+  const selectedConfigName = process.env.DASHBOARD_CONFIG_NAME?.trim();
+
+  if (!selectedConfigName) {
+    return DASHBOARD_CONFIGS;
+  }
+
+  const selectedConfig = DASHBOARD_CONFIG_LOOKUP[selectedConfigName as keyof typeof DASHBOARD_CONFIG_LOOKUP];
+
+  if (!selectedConfig) {
+    logger.error(
+      `Unknown DASHBOARD_CONFIG_NAME '${selectedConfigName}'. Expected one of: ${Object.keys(DASHBOARD_CONFIG_LOOKUP).join(", ")}.`
+    );
+    process.exit(1);
+  }
+
+  return [selectedConfig];
 }
 
 function requireApiKey(providerId: string): string {
@@ -98,7 +117,7 @@ async function runDashboard(input: StockInputGroup): Promise<void> {
 
 async function main(): Promise<void> {
   try {
-    for (const group of DASHBOARD_CONFIGS) {
+    for (const group of resolveDashboardConfigs()) {
       await runDashboard(group);
     }
     logger.info("Stock scanner finished successfully.");

@@ -12,7 +12,7 @@ export const CONSTANTS = {
   SPREADSHEET_ID: getEnvValue("SPREADSHEET_ID", "YOUR_SPREADSHEET_ID")
 };
 
-export const STOCKS_AI: StockInputGroup = {
+export const STOCKS_AV: StockInputGroup = {
   TARGET_SHEET_NAME: "FIN_DASHBOARD_AV",
   DATA_PROVIDER: PROVIDER_IDS.ALPHA_VANTAGE,
   INPUT_DATA: [
@@ -113,7 +113,7 @@ export const STOCKS_AI: StockInputGroup = {
   ]
 };
 
-export const STOCKS_OTHER: StockInputGroup = {
+export const STOCKS_FMP: StockInputGroup = {
   TARGET_SHEET_NAME: "FIN_DASHBOARD_FMP",
   DATA_PROVIDER: PROVIDER_IDS.FMP,
   INPUT_DATA: [
@@ -214,4 +214,9 @@ export const STOCKS_OTHER: StockInputGroup = {
   ]
 };
 
-export const DASHBOARD_CONFIGS: StockInputGroup[] = [STOCKS_AI, STOCKS_OTHER];
+export const DASHBOARD_CONFIG_LOOKUP = {
+  STOCKS_AV,
+  STOCKS_FMP
+} as const;
+
+export const DASHBOARD_CONFIGS: StockInputGroup[] = [STOCKS_AV, STOCKS_FMP];

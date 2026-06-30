@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  run-stock-scanner:
+  run-stock-scanner-av:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -20,10 +20,34 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run stock scanner
+      - name: Run stock scanner for STOCKS_AV
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          DASHBOARD_CONFIG_NAME: STOCKS_AV
+        run: npm run fetch
+
+  run-stock-scanner-fmp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '26.4.0'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run stock scanner for STOCKS_FMP
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          DASHBOARD_CONFIG_NAME: STOCKS_FMP
         run: npm run fetch
