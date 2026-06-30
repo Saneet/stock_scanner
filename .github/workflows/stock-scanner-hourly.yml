@@ -3,24 +3,47 @@ name: Stock Scanner Hourly
 on:
   schedule:
     - cron: '0 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dashboard_config_name:
+        description: 'Choose which dashboard to run manually'
+        required: true
+        type: choice
+        options:
+          - STOCKS_AV
+          - STOCKS_FMP
 
 jobs:
   run-stock-scanner-av:
     runs-on: ubuntu-latest
     steps:
+      - name: Check Pacific time window
+        id: time_check
+        shell: bash
+        run: |
+          current_hour=$(TZ=America/Los_Angeles date +%H)
+          if (( 10#$current_hour >= 8 && 10#$current_hour < 23 && 10#$current_hour % 2 == 0 )); then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_AV') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         uses: actions/checkout@v5
 
       - name: Setup Node.js
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_AV') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         uses: actions/setup-node@v5
         with:
           node-version: '26.4.0'
 
       - name: Install dependencies
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_AV') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         run: npm install
 
       - name: Run stock scanner for STOCKS_AV
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_AV') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
@@ -32,18 +55,33 @@ jobs:
   run-stock-scanner-fmp:
     runs-on: ubuntu-latest
     steps:
+      - name: Check Pacific time window
+        id: time_check
+        shell: bash
+        run: |
+          current_hour=$(TZ=America/Los_Angeles date +%H)
+          if (( 10#$current_hour >= 8 && 10#$current_hour < 23 && 10#$current_hour % 2 == 0 )); then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_FMP') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         uses: actions/checkout@v5
 
       - name: Setup Node.js
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_FMP') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         uses: actions/setup-node@v5
         with:
           node-version: '26.4.0'
 
       - name: Install dependencies
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_FMP') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         run: npm install
 
       - name: Run stock scanner for STOCKS_FMP
+        if: (github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name == 'STOCKS_FMP') || (github.event_name == 'schedule' && steps.time_check.outputs.should_run == 'true')
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
