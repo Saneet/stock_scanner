@@ -62,7 +62,9 @@ async function runDashboard(input, fileName) {
     await sheetClient.writeSheet(
       input.TARGET_SHEET_NAME,
       COLUMN_CONFIG.map(col => col.header),
-      result.rows
+      result.rows,
+      COLUMN_CONFIG.map(col => col.format),
+      result.errors
     );
     logger.info(`Wrote spreadsheet sheet: ${input.TARGET_SHEET_NAME}`);
   } else {
@@ -72,7 +74,7 @@ async function runDashboard(input, fileName) {
 
 async function main() {
   try {
-    await runDashboard(STOCKS_AI, "dashboard-ai.json");
+    //await runDashboard(STOCKS_AI, "dashboard-ai.json");
     await runDashboard(STOCKS_OTHER, "dashboard-other.json");
     logger.info("Stock scanner finished successfully.");
   } catch (error) {

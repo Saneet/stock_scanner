@@ -130,8 +130,8 @@ export class MetricsCalculator {
     }
 
     let mcapVal = null;
-    if (fmpProfile && fmpProfile.mktCap) {
-      mcapVal = Utils.parseNum(fmpProfile.mktCap);
+    if (fmpProfile && fmpProfile.marketCap) {
+      mcapVal = Utils.parseNum(fmpProfile.marketCap);
       m.mcap = this.createField(mcapVal, "API: Profile [marketCap]", Formatter.num(mcapVal));
     }
 
@@ -397,7 +397,7 @@ export class DashboardProcessor {
     this.errors = [];
   }
 
-  async generateDashboard(input, outputPath) {
+  async generateDashboard(input, { outputPath, writeJson = true } = {}) {
     logger.info(`Generating dashboard dataset for sheet: ${input.TARGET_SHEET_NAME}`);
     const rawDataMap = await this.fetcher.fetchAll(input.INPUT_DATA, this.errors);
     const rows = [];
@@ -424,7 +424,9 @@ export class DashboardProcessor {
       errors: this.errors
     };
 
-    OutputWriter.writeJson(outputPath, result);
+    if (writeJson && outputPath) {
+      OutputWriter.writeJson(outputPath, result);
+    }
     return result;
   }
 }
