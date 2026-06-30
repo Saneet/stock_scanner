@@ -34,7 +34,6 @@ const PROVIDER_MISSING_FIELD_CHECKS: Record<string, MissingFieldCheck[]> = {
   [PROVIDER_IDS.ALPHA_VANTAGE]: [
     { label: "profile.companyName", isMissing: batch => isMissingString(batch.profile?.companyName) },
     { label: "profile.country", isMissing: batch => isMissingString(batch.profile?.country) },
-    { label: "profile.isAdr", isMissing: batch => batch.profile?.isAdr === undefined },
     { label: "profile.marketCap", isMissing: batch => batch.profile?.marketCap === undefined || batch.profile?.marketCap === null },
     { label: "ratios.priceToSalesRatioTTM", isMissing: batch => batch.ratios?.priceToSalesRatioTTM === undefined || batch.ratios?.priceToSalesRatioTTM === null },
     { label: "ratios.priceToEarningsRatioTTM", isMissing: batch => batch.ratios?.priceToEarningsRatioTTM === undefined || batch.ratios?.priceToEarningsRatioTTM === null }
