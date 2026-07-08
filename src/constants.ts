@@ -132,4 +132,4 @@ export const DASHBOARD_CONFIG_LOOKUP = {
   STOCKS_TIINGO
 } as const;
 
-export const DASHBOARD_CONFIGS: StockInputGroup[] = [STOCKS_AV, STOCKS_FMP, STOCKS_TIINGO];
+export const DASHBOARD_CONFIGS: StockInputGroup[] = [STOCKS_FMP, STOCKS_TIINGO];
