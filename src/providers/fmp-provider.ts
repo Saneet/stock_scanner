@@ -96,8 +96,8 @@ export class FmpProvider implements MarketDataProvider {
 
   private mapIncomeRecord(record: Record<string, unknown>, includeGrossProfit: boolean): IncomeStatementRecord {
     const mapped: IncomeStatementRecord = {
-      date: typeof record.fiscalDateEnding === "string" ? record.fiscalDateEnding : undefined,
-      revenue: this.toNumber(record.totalRevenue)
+      date: this.getString(record, "date") ?? this.getString(record, "fiscalDateEnding"),
+      revenue: this.toNumber(record.revenue) ?? this.toNumber(record.totalRevenue)
     };
 
     if (includeGrossProfit) {
@@ -111,5 +111,10 @@ export class FmpProvider implements MarketDataProvider {
     if (value === undefined || value === null) return undefined;
     const parsed = Number.parseFloat(String(value));
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private getString(record: Record<string, unknown>, key: string): string | undefined {
+    const value = record[key];
+    return typeof value === "string" && value.trim().length > 0 ? value : undefined;
   }
 }
