@@ -1,10 +1,11 @@
 import { CONSTANTS, DASHBOARD_CONFIG_LOOKUP, DASHBOARD_CONFIGS } from "./constants";
 import { DashboardProcessor } from "./dashboard";
+import { buildDiffSheetData } from "./diff";
 import { COLUMN_CONFIG } from "./metrics";
 import { PROVIDER_IDS, createProvider } from "./provider";
 import { logger } from "./logger";
 import { GoogleSheetsClient } from "./sheets";
-import { StockInputGroup } from "./types";
+import { RawTickerData, StockInputGroup } from "./types";
 
 function resolveApiKey(providerId: string): string {
   switch (providerId.toLowerCase()) {
@@ -30,7 +31,7 @@ function resolveProviderId(input: StockInputGroup): string {
 function resolveDashboardConfigs(): StockInputGroup[] {
   const selectedConfigName = process.env.DASHBOARD_CONFIG_NAME?.trim();
 
-  if (!selectedConfigName) {
+  if (!selectedConfigName || selectedConfigName === "ALL") {
     return DASHBOARD_CONFIGS;
   }
 
@@ -44,6 +45,12 @@ function resolveDashboardConfigs(): StockInputGroup[] {
   }
 
   return [selectedConfig];
+}
+
+interface DashboardRunSnapshot {
+  providerId: string;
+  inputData: StockInputGroup["INPUT_DATA"];
+  rawDataByTicker: Record<string, RawTickerData>;
 }
 
 function requireApiKey(providerId: string): string {
@@ -92,7 +99,7 @@ function createSheetsClient(): GoogleSheetsClient | null {
   });
 }
 
-async function runDashboard(input: StockInputGroup): Promise<void> {
+async function runDashboard(input: StockInputGroup): Promise<DashboardRunSnapshot> {
   const providerId = resolveProviderId(input);
   const apiKey = requireApiKey(providerId);
   const provider = createProvider(providerId, { apiKey });
@@ -104,7 +111,11 @@ async function runDashboard(input: StockInputGroup): Promise<void> {
 
   if (!sheetClient) {
     logger.info("Sheet client not configured; skipping spreadsheet write.");
-    return;
+    return {
+      providerId: provider.id,
+      inputData: input.INPUT_DATA,
+      rawDataByTicker: result.rawDataByTicker
+    };
   }
 
   logger.info(`Writing ${result.rows.length} rows to spreadsheet sheet: ${input.TARGET_SHEET_NAME}`);
@@ -118,13 +129,32 @@ async function runDashboard(input: StockInputGroup): Promise<void> {
     { providerId: provider.id }
   );
   logger.info(`Wrote spreadsheet sheet: ${input.TARGET_SHEET_NAME}`);
+
+  return {
+    providerId: provider.id,
+    inputData: input.INPUT_DATA,
+    rawDataByTicker: result.rawDataByTicker
+  };
 }
 
 async function main(): Promise<void> {
   try {
+    const snapshots: DashboardRunSnapshot[] = [];
     for (const group of resolveDashboardConfigs()) {
-      await runDashboard(group);
+      snapshots.push(await runDashboard(group));
     }
+
+    if (sheetClient && snapshots.length > 1) {
+      const diffSheet = buildDiffSheetData(snapshots[0].inputData, snapshots.map(snapshot => ({
+        providerId: snapshot.providerId,
+        rawDataByTicker: snapshot.rawDataByTicker
+      })));
+
+      logger.info(`Writing DIFF sheet with ${diffSheet.rows.length} difference rows.`);
+      await sheetClient.writeSheet("DIFF", diffSheet.headers, diffSheet.rows, diffSheet.columnFormats, diffSheet.errors);
+      logger.info("Wrote spreadsheet sheet: DIFF");
+    }
+
     logger.info("Stock scanner finished successfully.");
   } catch (error) {
     logger.error("Stock scanner failed:", error);

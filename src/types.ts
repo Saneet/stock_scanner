@@ -83,6 +83,10 @@ export interface DashboardDataset {
   errors: string[];
 }
 
+export interface DashboardRunResult extends DashboardDataset {
+  rawDataByTicker: Record<string, RawTickerData>;
+}
+
 export type ColumnFormat = "string" | "number" | "percent" | "currency" | "large_currency";
 
 export interface ProviderRuntimeConfig {

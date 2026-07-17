@@ -18,9 +18,6 @@ on:
 jobs:
   run-stock-scanner:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        dashboard_config_name: ${{ github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name != 'ALL' && fromJSON(format('["{0}"]', inputs.dashboard_config_name)) || fromJSON('["STOCKS_FMP", "STOCKS_TIINGO"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -40,5 +37,5 @@ jobs:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-          DASHBOARD_CONFIG_NAME: ${{ matrix.dashboard_config_name }}
+          DASHBOARD_CONFIG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.dashboard_config_name || 'ALL' }}
         run: npm run fetch

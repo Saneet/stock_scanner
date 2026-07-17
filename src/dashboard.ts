@@ -4,7 +4,7 @@ import { logger } from "./logger";
 import { COLUMN_CONFIG, MetricsCalculator } from "./metrics";
 import { PROVIDER_IDS } from "./provider";
 import { toApiTicker, toSheetTicker } from "./ticker";
-import { DashboardDataset, MarketDataProvider, NormalizedTickerBatch, RawTickerData, StockInputGroup } from "./types";
+import { DashboardDataset, DashboardRunResult, MarketDataProvider, NormalizedTickerBatch, RawTickerData, StockInputGroup } from "./types";
 
 interface MissingFieldCheck {
   label: string;
@@ -172,7 +172,7 @@ export class DashboardProcessor {
     this.fetcher = new DataFetcher(provider);
   }
 
-  async generateDashboard(input: StockInputGroup, options: { outputPath?: string; writeJson?: boolean } = {}): Promise<DashboardDataset> {
+  async generateDashboard(input: StockInputGroup, options: { outputPath?: string; writeJson?: boolean } = {}): Promise<DashboardRunResult> {
     const { outputPath, writeJson = true } = options;
     logger.info(`Generating dashboard dataset for sheet: ${input.TARGET_SHEET_NAME}`);
     const rawDataMap = await this.fetcher.fetchAll(input.INPUT_DATA, this.errors);
@@ -204,6 +204,9 @@ export class DashboardProcessor {
       OutputWriter.writeJson(outputPath, result);
     }
 
-    return result;
+    return {
+      ...result,
+      rawDataByTicker: rawDataMap
+    };
   }
 }
