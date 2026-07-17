@@ -1,5 +1,5 @@
 import { logger } from "../logger";
-import { MarketDataProvider, NormalizedTickerBatch } from "../types";
+import { IncomeStatementRecord, MarketDataProvider, NormalizedTickerBatch } from "../types";
 
 export class FmpProvider implements MarketDataProvider {
   readonly id = "fmp";
@@ -72,8 +72,8 @@ export class FmpProvider implements MarketDataProvider {
       responses[endpoint] = await this.fetchJson(endpoint);
     }
 
-    const incomeAnnual = this.toObjectArray(responses[endpoints[0]]);
-    const incomeQuarterly = this.toObjectArray(responses[endpoints[1]]);
+    const incomeAnnual = this.toObjectArray(responses[endpoints[0]]).map(record => this.mapIncomeRecord(record, false));
+    const incomeQuarterly = this.toObjectArray(responses[endpoints[1]]).map(record => this.mapIncomeRecord(record, true));
     const cashFlow = this.toObjectArray(responses[endpoints[2]]);
     const profileRaw = this.toObjectArray(responses[endpoints[3]]);
     const ratiosRaw = this.toObjectArray(responses[endpoints[4]]);
@@ -92,5 +92,24 @@ export class FmpProvider implements MarketDataProvider {
   private toObjectArray(value: unknown): Array<Record<string, unknown>> {
     if (!Array.isArray(value)) return [];
     return value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+  }
+
+  private mapIncomeRecord(record: Record<string, unknown>, includeGrossProfit: boolean): IncomeStatementRecord {
+    const mapped: IncomeStatementRecord = {
+      date: typeof record.fiscalDateEnding === "string" ? record.fiscalDateEnding : undefined,
+      revenue: this.toNumber(record.totalRevenue)
+    };
+
+    if (includeGrossProfit) {
+      mapped.grossProfit = this.toNumber(record.grossProfit);
+    }
+
+    return mapped;
+  }
+
+  private toNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null) return undefined;
+    const parsed = Number.parseFloat(String(value));
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
 }

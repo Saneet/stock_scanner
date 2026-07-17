@@ -128,7 +128,14 @@ export class TiingoProvider implements MarketDataProvider {
     return Array.from(groups.values()).sort((a, b) => b.date.localeCompare(a.date));
   }
 
-  private mapToIncomeRecord(group: TiingoStatementGroup): IncomeStatementRecord {
+  private mapToAnnualIncomeRecord(group: TiingoStatementGroup): IncomeStatementRecord {
+    return {
+      date: group.date,
+      revenue: group.data["revenue"]
+    };
+  }
+
+  private mapToQuarterlyIncomeRecord(group: TiingoStatementGroup): IncomeStatementRecord {
     return {
       date: group.date,
       revenue: group.data["revenue"],
@@ -175,8 +182,8 @@ export class TiingoProvider implements MarketDataProvider {
     const annualGroups = allGroups.filter(g => g.quarter === 0);
     const quarterlyGroups = allGroups.filter(g => g.quarter !== 0);
 
-    const incomeAnnual = annualGroups.slice(0, 5).map(g => this.mapToIncomeRecord(g));
-    const incomeQuarterly = quarterlyGroups.slice(0, 10).map(g => this.mapToIncomeRecord(g));
+    const incomeAnnual = annualGroups.slice(0, 5).map(g => this.mapToAnnualIncomeRecord(g));
+    const incomeQuarterly = quarterlyGroups.slice(0, 10).map(g => this.mapToQuarterlyIncomeRecord(g));
     const cashFlow = annualGroups.slice(0, 2).map(g => this.mapToCashFlowRecord(g));
 
     // --- Meta ---

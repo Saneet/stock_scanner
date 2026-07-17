@@ -16,6 +16,12 @@ interface WriteSheetOptions {
   providerId?: string;
 }
 
+interface SheetDimensions {
+  sheetId: number;
+  rowCount: number;
+  columnCount: number;
+}
+
 export class GoogleSheetsClient {
   private readonly spreadsheetId: string;
   private readonly serviceAccountKey?: string | Record<string, unknown>;
@@ -80,7 +86,7 @@ export class GoogleSheetsClient {
     return this.sheetsApi;
   }
 
-  private async ensureSheet(sheetName: string): Promise<number> {
+  private async ensureSheet(sheetName: string): Promise<SheetDimensions> {
     const sheets = await this.getSheetsApi();
     const response = await sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId });
     const existingSheet = response.data.sheets?.find(sheet => sheet.properties?.title === sheetName);
@@ -107,7 +113,12 @@ export class GoogleSheetsClient {
       if (existingSheet.properties?.sheetId === undefined || existingSheet.properties.sheetId === null) {
         throw new Error(`Sheet '${sheetName}' exists but has no sheetId.`);
       }
-      return existingSheet.properties.sheetId;
+
+      return {
+        sheetId: existingSheet.properties.sheetId,
+        rowCount: existingSheet.properties.gridProperties?.rowCount ?? 1000,
+        columnCount: existingSheet.properties.gridProperties?.columnCount ?? 26
+      };
     }
 
     const result = await sheets.spreadsheets.batchUpdate({
@@ -121,7 +132,51 @@ export class GoogleSheetsClient {
     if (newSheetId === undefined || newSheetId === null) {
       throw new Error(`Failed to create sheet '${sheetName}'.`);
     }
-    return newSheetId;
+
+    return {
+      sheetId: newSheetId,
+      rowCount: 1000,
+      columnCount: 26
+    };
+  }
+
+  private async ensureSheetCapacity(sheetId: number, requiredRows: number, requiredColumns: number): Promise<void> {
+    const sheets = await this.getSheetsApi();
+
+    const response = await sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId });
+    const sheet = response.data.sheets?.find(entry => entry.properties?.sheetId === sheetId);
+    if (!sheet?.properties?.gridProperties) {
+      return;
+    }
+
+    const currentRows = sheet.properties.gridProperties.rowCount ?? 0;
+    const currentColumns = sheet.properties.gridProperties.columnCount ?? 0;
+    const nextRows = Math.max(currentRows, requiredRows);
+    const nextColumns = Math.max(currentColumns, requiredColumns);
+
+    if (nextRows === currentRows && nextColumns === currentColumns) {
+      return;
+    }
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId,
+                gridProperties: {
+                  rowCount: nextRows,
+                  columnCount: nextColumns
+                }
+              },
+              fields: "gridProperties.rowCount,gridProperties.columnCount"
+            }
+          }
+        ]
+      }
+    });
   }
 
   private async clearSheet(sheetName: string, sheetId: number): Promise<void> {
@@ -176,11 +231,14 @@ export class GoogleSheetsClient {
       throw new Error("GoogleSheetsClient.writeSheet requires a non-empty headers array.");
     }
 
-    const sheetId = await this.ensureSheet(sheetName);
+    const { sheetId, rowCount, columnCount } = await this.ensureSheet(sheetName);
+    const values = [headers, ...rows];
+    const errorStartRow = rows.length + 4;
+    const requiredRows = Math.max(values.length, errorStartRow);
+    await this.ensureSheetCapacity(sheetId, requiredRows, headers.length);
     await this.clearSheet(sheetName, sheetId);
 
     const sheets = await this.getSheetsApi();
-    const values = [headers, ...rows];
 
     const valueResponse = await sheets.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
@@ -218,7 +276,6 @@ export class GoogleSheetsClient {
       totalUpdatedCells: valueResponse.data.updatedCells
     });
 
-    const errorStartRow = rows.length + 4;
     const logText = errors.length > 0 ? errors.join("\n") : "No errors or warnings.";
 
     await sheets.spreadsheets.values.update({

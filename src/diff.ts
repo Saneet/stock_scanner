@@ -15,7 +15,6 @@ export interface DiffSheetData {
 interface ComparisonSpec {
   field: string;
   period: string;
-  kind: "string" | "boolean" | "number";
   getValues: (batch: RawTickerData) => Array<{ period: string; value: unknown }>;
 }
 
@@ -32,73 +31,41 @@ const COMPARISON_SPECS: ComparisonSpec[] = [
   {
     field: "incomeAnnual.revenue",
     period: "Annual",
-    kind: "number",
     getValues: batch => batch.incomeAnnual.map(record => ({ period: formatAnnualPeriod(record.date), value: record.revenue }))
-  },
-  {
-    field: "incomeAnnual.grossProfit",
-    period: "Annual",
-    kind: "number",
-    getValues: batch => batch.incomeAnnual.map(record => ({ period: formatAnnualPeriod(record.date), value: record.grossProfit }))
   },
   {
     field: "incomeQuarterly.revenue",
     period: "Q[num]",
-    kind: "number",
     getValues: batch => batch.incomeQuarterly.map(record => ({ period: formatQuarterPeriod(record.date), value: record.revenue }))
   },
   {
     field: "incomeQuarterly.grossProfit",
     period: "Q[num]",
-    kind: "number",
     getValues: batch => batch.incomeQuarterly.map(record => ({ period: formatQuarterPeriod(record.date), value: record.grossProfit }))
   },
   {
     field: "cashFlow.operatingCashFlow",
     period: "Annual",
-    kind: "number",
     getValues: batch => batch.cashFlow.map((record, index) => ({ period: formatAnnualPeriod(batch.incomeAnnual[index]?.date), value: record.operatingCashFlow }))
   },
   {
     field: "cashFlow.capitalExpenditure",
     period: "Annual",
-    kind: "number",
     getValues: batch => batch.cashFlow.map((record, index) => ({ period: formatAnnualPeriod(batch.incomeAnnual[index]?.date), value: record.capitalExpenditure }))
-  },
-  {
-    field: "profile.companyName",
-    period: "Current",
-    kind: "string",
-    getValues: batch => [{ period: "Current", value: batch.profile?.companyName }]
-  },
-  {
-    field: "profile.country",
-    period: "Current",
-    kind: "string",
-    getValues: batch => [{ period: "Current", value: batch.profile?.country }]
-  },
-  {
-    field: "profile.isAdr",
-    period: "Current",
-    kind: "boolean",
-    getValues: batch => [{ period: "Current", value: batch.profile?.isAdr }]
   },
   {
     field: "profile.marketCap",
     period: "Current",
-    kind: "number",
     getValues: batch => [{ period: "Current", value: batch.profile?.marketCap }]
   },
   {
     field: "ratios.priceToSalesRatioTTM",
     period: "TTM",
-    kind: "number",
     getValues: batch => [{ period: "TTM", value: batch.ratios?.priceToSalesRatioTTM }]
   },
   {
     field: "ratios.priceToEarningsRatioTTM",
     period: "TTM",
-    kind: "number",
     getValues: batch => [{ period: "TTM", value: batch.ratios?.priceToEarningsRatioTTM }]
   }
 ];
@@ -128,7 +95,7 @@ export function buildDiffSheetData(inputData: StockInputItem[], runs: ProviderDi
       }
 
       for (const [period, values] of periodBuckets.entries()) {
-        if (!hasDifference(values, spec.kind)) continue;
+        if (!hasDifference(values)) continue;
 
         rows.push({
           ticker,
@@ -158,31 +125,26 @@ export function buildDiffSheetData(inputData: StockInputItem[], runs: ProviderDi
   };
 }
 
-function hasDifference(values: unknown[], kind: ComparisonSpec["kind"]): boolean {
+function hasDifference(values: unknown[]): boolean {
   const presentValues = values.filter(value => !isEmptyValue(value));
   if (presentValues.length === 0) return false;
 
   if (presentValues.length !== values.length) return true;
 
-  if (kind === "number") {
-    const numericValues = presentValues.map(value => toNumber(value)).filter((value): value is number => value !== null);
-    if (numericValues.length !== presentValues.length) {
-      return true;
-    }
-
-    for (let left = 0; left < numericValues.length; left++) {
-      for (let right = left + 1; right < numericValues.length; right++) {
-        if (isNumericDifferenceAboveThreshold(numericValues[left], numericValues[right])) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+  const numericValues = presentValues.map(value => toNumber(value)).filter((value): value is number => value !== null);
+  if (numericValues.length !== presentValues.length) {
+    return true;
   }
 
-  const normalized = presentValues.map(value => normalizeTextValue(value));
-  return new Set(normalized).size > 1;
+  for (let left = 0; left < numericValues.length; left++) {
+    for (let right = left + 1; right < numericValues.length; right++) {
+      if (isNumericDifferenceAboveThreshold(numericValues[left], numericValues[right])) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function isNumericDifferenceAboveThreshold(left: number, right: number): boolean {
@@ -200,10 +162,6 @@ function formatDisplayValue(value: unknown): string {
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") return value ? "true" : "false";
   return String(value);
-}
-
-function normalizeTextValue(value: unknown): string {
-  return formatDisplayValue(value).trim().toLowerCase();
 }
 
 function toNumber(value: unknown): number | null {

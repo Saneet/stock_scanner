@@ -49,8 +49,7 @@ const PROVIDER_MISSING_FIELD_CHECKS: Record<string, MissingFieldCheck[]> = {
 
 const ALL_PROVIDER_RECORD_CHECKS: Record<string, RecordFieldCheck[]> = {
   incomeAnnual: [
-    { label: "revenue", isMissing: record => isMissingNumber(getRecordField(record, "revenue")) },
-    { label: "grossProfit", isMissing: record => isMissingNumber(getRecordField(record, "grossProfit")) }
+    { label: "revenue", isMissing: record => isMissingNumber(getRecordField(record, "revenue")) }
   ],
   incomeQuarterly: [
     { label: "revenue", isMissing: record => isMissingNumber(getRecordField(record, "revenue")) },

@@ -122,7 +122,14 @@ export class AlphaVantageProvider implements MarketDataProvider {
     return undefined;
   }
 
-  private mapIncomeRecord(record: AlphaVantageRecord): IncomeStatementRecord {
+  private mapAnnualIncomeRecord(record: AlphaVantageRecord): IncomeStatementRecord {
+    return {
+      date: this.getString(record, "fiscalDateEnding"),
+      revenue: this.getNumber(record, "totalRevenue")
+    };
+  }
+
+  private mapQuarterlyIncomeRecord(record: AlphaVantageRecord): IncomeStatementRecord {
     return {
       date: this.getString(record, "fiscalDateEnding"),
       revenue: this.getNumber(record, "totalRevenue"),
@@ -149,8 +156,8 @@ export class AlphaVantageProvider implements MarketDataProvider {
     const cashFlowRecord = this.toRecord(cashFlowRaw);
     const overviewRecord = this.toRecord(overviewRaw);
 
-    const incomeAnnual = this.toObjectArray(incomeRecord?.annualReports).slice(0, 4).map(record => this.mapIncomeRecord(record));
-    const incomeQuarterly = this.toObjectArray(incomeRecord?.quarterlyReports).slice(0, 10).map(record => this.mapIncomeRecord(record));
+    const incomeAnnual = this.toObjectArray(incomeRecord?.annualReports).slice(0, 4).map(record => this.mapAnnualIncomeRecord(record));
+    const incomeQuarterly = this.toObjectArray(incomeRecord?.quarterlyReports).slice(0, 10).map(record => this.mapQuarterlyIncomeRecord(record));
     const cashFlow = this.toObjectArray(cashFlowRecord?.annualReports).slice(0, 2).map(record => this.mapCashFlowRecord(record));
 
     const marketCap = this.getNumber(overviewRecord, "MarketCapitalization");
